@@ -8,6 +8,7 @@ import { generateToken } from "./utils/jwt";
 //@ts-ignore
 import cors from "cors";
 import { authenticateToken } from "./middleware/auth";
+import { db } from "./prismaClient";
 dotenv.config();
 
 const app = express();
@@ -89,14 +90,23 @@ app.get(
 
       const userPayload: GoogleUserPayload = {
         email: payload.email || "",
-        email_verified: payload.email_verified || false,
         name: payload.name || "",
         picture: payload.picture || "",
-        given_name: payload.given_name || "",
-        family_name: payload.family_name || "",
-        locale: payload.locale || "",
       };
 
+      let user = await db.user.findUnique({
+        where: { email: userPayload.email },
+      });
+
+      if (!user) {
+        user = await db.user.create({
+          data: {
+            name: userPayload.name,
+            email: userPayload.email,
+            avatarUrl: userPayload.picture,
+          },
+        });
+      }
       // Generate JWT token
       const token = generateToken(userPayload);
 
