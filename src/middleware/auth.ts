@@ -10,7 +10,6 @@ export const authenticateToken = (
   next: NextFunction
 ) => {
   const token = req.cookies.token;
-  //console.log(req);
 
   if (!token) {
     return res.status(401).json({ message: "Authentication required" });
@@ -18,6 +17,7 @@ export const authenticateToken = (
 
   try {
     const user = jwt.verify(token, JWT_SECRET!);
+    console.log("User", user);
     //@ts-ignore
     req.user = user;
     next();
