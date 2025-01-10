@@ -8,6 +8,8 @@ import { generateToken } from "./utils/jwt";
 //@ts-ignore
 import cors from "cors";
 import { authenticateToken } from "./middleware/auth";
+import { getUserByEmail } from "./lib/user";
+import { db } from "prismaClient";
 dotenv.config();
 
 const app = express();
@@ -96,6 +98,18 @@ app.get(
         family_name: payload.family_name || "",
         locale: payload.locale || "",
       };
+      console.log("SARTHAK\n\n");
+      
+      const user = await getUserByEmail(userPayload.email);
+      if (!user) {
+        const newUser = await db.user.create({data:{
+          email: userPayload.email,
+          name: userPayload.name,
+          avatarUrl: userPayload.picture,
+          createdAt: new Date(),
+        }});
+        console.log(`Created new user: ${newUser}`);
+      } 
 
       // Generate JWT token
       const token = generateToken(userPayload);

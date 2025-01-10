@@ -10,7 +10,7 @@ export const authenticateToken = (
   next: NextFunction
 ) => {
   const token = req.cookies.token;
-  console.log(req);
+  //console.log(req);
 
   if (!token) {
     return res.status(401).json({ message: "Authentication required" });
