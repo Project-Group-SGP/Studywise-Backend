@@ -3,13 +3,22 @@ import dotenv from "dotenv";
 import { OAuth2Client } from "google-auth-library";
 import session from "express-session";
 import { GoogleUserPayload } from "./types";
+import cookieParser from "cookie-parser";
+import { generateToken } from "./utils/jwt";
 //@ts-ignore
 import cors from "cors";
+import { authenticateToken } from "./middleware/auth";
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cookieParser());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173", // Update with your frontend URL
+    credentials: true,
+  })
+);
 const port = process.env.PORT || 3000;
 
 // Google OAuth setup
@@ -51,63 +60,70 @@ app.get("/auth/google", (_req: Request, res: Response) => {
   res.redirect(authUrl);
 });
 
-// Callback route
 app.get(
   "/auth/google/callback",
   //@ts-ignore
-  (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const code = req.query.code;
     if (typeof code !== "string") {
       return res.status(400).send("Invalid code provided.");
     }
 
-    oAuth2Client
-      .getToken(code)
-      .then(({ tokens }) => {
-        oAuth2Client.setCredentials(tokens);
+    try {
+      const { tokens } = await oAuth2Client.getToken(code);
+      oAuth2Client.setCredentials(tokens);
 
-        if (!tokens.id_token) {
-          throw new Error("No ID token received");
-        }
+      if (!tokens.id_token) {
+        throw new Error("No ID token received");
+      }
 
-        return oAuth2Client.verifyIdToken({
-          idToken: tokens.id_token,
-          audience: CLIENT_ID,
-        });
-      })
-      .then((ticket) => {
-        const payload = ticket.getPayload();
-        if (!payload) {
-          throw new Error("Failed to get payload from ID token");
-        }
-
-        const userPayload: GoogleUserPayload = {
-          email: payload.email || "",
-          email_verified: payload.email_verified || false,
-          name: payload.name || "",
-          picture: payload.picture || "",
-          given_name: payload.given_name || "",
-          family_name: payload.family_name || "",
-          locale: payload.locale || "",
-        };
-
-        req.session.user = userPayload;
-        res.redirect("/dashboard"); // Redirect to the frontend dashboard or home page
-      })
-      .catch((error) => {
-        console.error(error);
-        res.status(500).send("Authentication failed.");
+      const ticket = await oAuth2Client.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: CLIENT_ID,
       });
+
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new Error("Failed to get payload from ID token");
+      }
+
+      const userPayload: GoogleUserPayload = {
+        email: payload.email || "",
+        email_verified: payload.email_verified || false,
+        name: payload.name || "",
+        picture: payload.picture || "",
+        given_name: payload.given_name || "",
+        family_name: payload.family_name || "",
+        locale: payload.locale || "",
+      };
+
+      // Generate JWT token
+      const token = generateToken(userPayload);
+
+      // Set token in HTTP-only cookie
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      // Redirect to frontend groups page
+      res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/groups`
+      );
+    } catch (error) {
+      console.error(error);
+      res.status(500).send("Authentication failed.");
+    }
   }
 );
 
-// Get logged-in user details
-app.get("/me", (req: Request, res: Response) => {
-  if (req.session.user) {
-    res.json(req.session.user);
-  } else {
-    res.status(401).send("Not logged in.");
-  }
+// Protected route example
+//@ts-ignore
+app.get("/me", authenticateToken, (req: Request, res: Response) => {
+  //@ts-ignore
+  res.json(req.user);
 });
 
 app.listen(port, () => {

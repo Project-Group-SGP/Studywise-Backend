@@ -1,5 +1,3 @@
-import { Session } from "express-session";
-
 export interface GoogleUserPayload {
   email: string;
   email_verified: boolean;
@@ -13,5 +11,14 @@ export interface GoogleUserPayload {
 declare module "express-session" {
   interface Session {
     user?: GoogleUserPayload;
+  }
+}
+
+// types.ts
+declare global {
+  namespace Express {
+    interface Request {
+      user?: GoogleUserPayload;
+    }
   }
 }
