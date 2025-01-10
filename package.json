@@ -14,10 +14,7 @@
     "@prisma/client": "^5.22.0",
     "@types/cookie-parser": "^1.4.8",
     "@types/express-session": "^1.18.1",
-<<<<<<< HEAD
-=======
     "@types/jsonwebtoken": "^9.0.7",
->>>>>>> 6c7e5eb48b0ec439dc9ec798bbfce950751df456
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
