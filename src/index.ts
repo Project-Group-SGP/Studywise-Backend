@@ -100,7 +100,6 @@ app.get(
         name: payload.name || "",
         picture: payload.picture || "",
       };
-      console.log("SARTHAK\n\n");
 
       console.log(userPayload);
 
@@ -142,6 +141,23 @@ app.get(
     }
   }
 );
+
+app.post("/logout", (req: Request, res: Response) => {
+  try {
+    // Clear the token cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
+    // Send a success response or redirect
+    res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    res.status(500).json({ message: "Failed to log out" });
+  }
+});
 
 // Protected route example
 //@ts-ignore
