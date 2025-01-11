@@ -2,14 +2,14 @@ import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import { OAuth2Client } from "google-auth-library";
 import session from "express-session";
-import { GoogleUserPayload } from "./types";
+import { GoogleUserPayload, TokenPayload } from "./types";
 import cookieParser from "cookie-parser";
 import { generateToken } from "./utils/jwt";
 //@ts-ignore
 import cors from "cors";
 import { authenticateToken } from "./middleware/auth";
 import { db } from "./prismaClient";
-import { getUserByEmail } from "lib/user";
+import { getUserByEmail } from "./lib/user";
 dotenv.config();
 
 const app = express();
@@ -84,6 +84,7 @@ app.get(
         audience: CLIENT_ID,
       });
 
+      console.log(ticket);
       const payload = ticket.getPayload();
       if (!payload) {
         throw new Error("Failed to get payload from ID token");
@@ -95,20 +96,28 @@ app.get(
         picture: payload.picture || "",
       };
       console.log("SARTHAK\n\n");
-      
-      const user = await getUserByEmail(userPayload.email);
+
+      console.log(userPayload);
+
+      let user = await getUserByEmail(userPayload.email);
       if (!user) {
-        const newUser = await db.user.create({data:{
-          email: userPayload.email,
-          name: userPayload.name,
-          avatarUrl: userPayload.picture,
-          createdAt: new Date(),
-        }});
-        console.log(`Created new user: ${newUser}`);
-      } 
+        user = await db.user.create({
+          data: {
+            email: userPayload.email,
+            name: userPayload.name,
+            avatarUrl: userPayload.picture,
+            createdAt: new Date(),
+          },
+        });
+      }
+
+      const tokenPayload: TokenPayload = {
+        ...userPayload,
+        id: user.id,
+      };
 
       // Generate JWT token
-      const token = generateToken(userPayload);
+      const token = generateToken(tokenPayload);
 
       // Set token in HTTP-only cookie
       res.cookie("token", token, {

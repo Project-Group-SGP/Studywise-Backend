@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { getCurrentUser } from "lib/user";
 dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -20,6 +21,8 @@ export const authenticateToken = (
     console.log("User", user);
     //@ts-ignore
     req.user = user;
+
+    console.log("Authenticated user:", getCurrentUser(req));
     next();
   } catch (error) {
     return res.status(403).json({ message: "Invalid or expired token" });
