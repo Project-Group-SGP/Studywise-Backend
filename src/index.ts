@@ -2,7 +2,11 @@ import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import { OAuth2Client } from "google-auth-library";
 import session from "express-session";
-import { GoogleUserPayload, TokenPayload } from "./types";
+import {
+  GoogleUserPayload,
+  pushSubscriptionSchema,
+  TokenPayload,
+} from "./types";
 import cookieParser from "cookie-parser";
 import { generateToken } from "./utils/jwt";
 //@ts-ignore
@@ -10,6 +14,7 @@ import cors from "cors";
 import { authenticateToken } from "./middleware/auth";
 import { db } from "./prismaClient";
 import { getUserByEmail } from "./lib/user";
+import z from "zod";
 dotenv.config();
 
 const app = express();
@@ -144,6 +149,92 @@ app.get("/me", authenticateToken, (req: Request, res: Response) => {
   //@ts-ignore
   res.json(req.user);
 });
+
+app.post(
+  "/push-subscription",
+  //@ts-ignore
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const validatedData = pushSubscriptionSchema.parse(req.body);
+      const { endpoint, auth, p256dh } = validatedData;
+      const { id } = req.user as TokenPayload;
+
+      const existingSubscription = await db.pushSubscription.findUnique({
+        where: { endpoint },
+      });
+
+      if (existingSubscription) {
+        await db.pushSubscription.update({
+          where: { id: existingSubscription.id },
+          data: {
+            auth,
+            p256dh,
+          },
+        });
+      } else {
+        await db.pushSubscription.create({
+          data: {
+            endpoint,
+            auth,
+            p256dh,
+            userId: id,
+          },
+        });
+      }
+
+      res.status(200).json({
+        message: "Push subscription created successfully",
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ errors: error.errors });
+      }
+      console.error("Error creating push subscription:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
+
+app.delete(
+  "/push-subscription",
+  //@ts-ignore
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const validatedData = pushSubscriptionSchema.parse(req.body);
+      const { endpoint } = validatedData;
+      const { id } = req.user as TokenPayload;
+      const subscription = await db.pushSubscription.findUnique({
+        where: { endpoint },
+      });
+
+      if (!subscription) {
+        return res.status(404).json({ message: "Subscription not found" });
+      }
+
+      if (subscription.userId !== id) {
+        return res
+          .status(403)
+          .json({ message: "Unauthorized to delete this subscription" });
+      }
+
+      await db.pushSubscription.delete({
+        where: { endpoint },
+      });
+
+      res
+        .status(200)
+        .json({ message: "Push subscription deleted successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ errors: error.errors });
+      }
+      console.error("Error deleting push subscription:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 app.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);

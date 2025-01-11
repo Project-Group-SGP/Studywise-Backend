@@ -22,7 +22,6 @@ export const authenticateToken = (
     //@ts-ignore
     req.user = user;
 
-    console.log("Authenticated user:", getCurrentUser(req));
     next();
   } catch (error) {
     return res.status(403).json({ message: "Invalid or expired token" });

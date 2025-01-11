@@ -1,3 +1,5 @@
+import z from "zod";
+
 export interface GoogleUserPayload {
   email: string;
   name: string;
@@ -32,3 +34,11 @@ declare global {
     }
   }
 }
+
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url(),
+  auth: z.string().min(1),
+  p256dh: z.string().min(1),
+});
+
+export type PushSubscription = z.infer<typeof pushSubscriptionSchema>;
