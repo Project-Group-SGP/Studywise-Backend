@@ -1,7 +1,6 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
-import { getCurrentUser } from "lib/user";
+import { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
 dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET;
 

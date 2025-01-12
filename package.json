@@ -12,10 +12,6 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.2.1",
-    "@types/cookie-parser": "^1.4.8",
-    "@types/express-session": "^1.18.1",
-    "@types/jsonwebtoken": "^9.0.7",
-    "@types/retry": "^0.12.5",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -29,6 +25,7 @@
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.8",
+    "@types/express-session": "^1.18.1",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.5",
