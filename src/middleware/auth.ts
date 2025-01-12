@@ -18,7 +18,7 @@ export const authenticateToken = (
 
   try {
     const user = jwt.verify(token, JWT_SECRET!);
-    console.log("User", user);
+    // console.log("User", user);
     //@ts-ignore
     req.user = user;
 

@@ -15,6 +15,7 @@ import { authenticateToken } from "./middleware/auth";
 import { db } from "./prismaClient";
 import { getUserByEmail } from "./lib/user";
 import z from "zod";
+import groupRouter from "./api/group/index";
 dotenv.config();
 
 const app = express();
@@ -26,6 +27,10 @@ app.use(
     credentials: true,
   })
 );
+
+// group routes
+
+app.use("/api/groups",  groupRouter);
 const port = process.env.PORT || 3000;
 
 // Google OAuth setup
@@ -101,7 +106,7 @@ app.get(
         picture: payload.picture || "",
       };
 
-      console.log(userPayload);
+      // console.log(userPayload);
 
       let user = await getUserByEmail(userPayload.email);
       if (!user) {
@@ -251,6 +256,8 @@ app.delete(
     }
   }
 );
+
+
 
 app.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);
