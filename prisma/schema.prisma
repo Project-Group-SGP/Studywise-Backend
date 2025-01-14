@@ -27,6 +27,7 @@ model User {
 model Group {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
   name          String
+  subject       String
   description   String?
   code          String        @unique
   creatorId     String        @db.ObjectId
