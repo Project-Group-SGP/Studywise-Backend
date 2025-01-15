@@ -16,11 +16,13 @@ import { db } from "./prismaClient";
 import { getUserByEmail } from "./lib/user";
 import z from "zod";
 import groupRouter from "./api/group/index";
+import morgan from "morgan";
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
+app.use(morgan("dev"));
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173", // Update with your frontend URL
@@ -30,7 +32,7 @@ app.use(
 
 // group routes
 
-app.use("/api/groups",  groupRouter);
+app.use("/api/groups", groupRouter);
 const port = process.env.PORT || 3000;
 
 // Google OAuth setup
@@ -256,8 +258,6 @@ app.delete(
     }
   }
 );
-
-
 
 app.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);

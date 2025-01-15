@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "npx ts-node src/index.ts"
+    "dev": "npx ts-node src/index.ts",
+    "postinstall": "npx prisma generate"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +13,7 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.2.1",
+    "@types/morgan": "^1.9.9",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -19,14 +21,15 @@
     "express-session": "^1.18.1",
     "google-auth-library": "^9.15.0",
     "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
     "prisma": "^6.2.1",
     "web-push": "^3.6.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.8",
-    "@types/express-session": "^1.18.1",
     "@types/express": "^5.0.0",
+    "@types/express-session": "^1.18.1",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.5",
     "typescript": "^5.7.2"
