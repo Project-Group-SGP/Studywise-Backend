@@ -17,9 +17,77 @@ import { getUserByEmail } from "./lib/user";
 import z from "zod";
 import groupRouter from "./api/group/index";
 import morgan from "morgan";
+import { Server } from "socket.io";
+import { createServer } from "http";
+
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
+
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    methods: ["GET", "POST"],
+  },
+});
+
+io.on("connection", (socket) => {
+  console.log("a user connected", socket.id);
+
+  socket.on("joinGroup", (groupId) => {
+    socket.join(groupId);
+    console.log(`User ${socket.id} joined group ${groupId}`);
+  });
+
+  socket.on("sendMessage", async (data) => {
+    try {
+      const { content, groupId, userId } = data;
+
+      console.log("Received message:", data);
+      
+      
+      const message = await db.message.create({
+        data: {
+          content,
+          groupId,
+          userId,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      io.to(groupId).emit("message", message);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      socket.emit("error", "Message sending failed");
+    }
+  });
+
+  socket.on("typing", (data) => {
+    const { groupId, userId, username } = data;
+    socket.to(groupId).emit("typing", { userId, username });
+  });
+
+  socket.on("stopTyping", (data) => {
+    const { groupId, userId, username } = data;
+    socket.to(groupId).emit("stopTyping", { userId, username });
+  });
+
+  socket.on("disconnect", () => {
+    console.log("user disconnected", socket.id);
+  });
+});
+
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
@@ -259,6 +327,6 @@ app.delete(
   }
 );
 
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);
 });

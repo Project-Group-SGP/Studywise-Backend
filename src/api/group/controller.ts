@@ -587,3 +587,66 @@ export const deleteGroup = async (
     return res.status(500).json({ message: "Failed to delete group" });
   }
 };
+
+// get group messages
+export const getGroupMessages = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    console.log("Inside getGroupMessages");
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Type assertion for id
+    const { id } = user as TokenPayload;
+
+    // Destructure and validate request body
+    const { groupId } = req.params as { groupId: string };
+
+    console.log("Getting messages for group with id", groupId);
+
+    if (!groupId) {
+      return res.status(400).json({ message: "Group ID is required" });
+    }
+
+    // Find the group with the given ID
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    // Check if the user is a member of the group
+    if (!group.memberIds.includes(id)) {
+      return res.status(400).json({ message: "Not a member of the group" });
+    }
+
+    // Get the messages for the group
+    const messages = await db.message.findMany({
+      where: { groupId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    console.log("Messages", messages);
+
+    return res.status(200).json({messages});
+  } catch (error) {
+    console.error("Error getting group messages:", error);
+    return res.status(500).json({ message: "Failed to get group messages" });
+  } 
+}

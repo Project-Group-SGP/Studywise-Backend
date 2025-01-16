@@ -33,4 +33,7 @@ router.post('/leave-group',authenticateToken,controller.leaveGroup);
 //@ts-ignore
 router.post('/delete-group',authenticateToken,controller.deleteGroup);
 
+//@ts-ignore
+router.get('/:groupId/messages',authenticateToken,controller.getGroupMessages);
+
 export default router;
