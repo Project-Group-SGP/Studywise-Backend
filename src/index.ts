@@ -65,6 +65,7 @@ io.on("connection", (socket) => {
         },
       });
 
+      // Broadcast the message to all clients in the group
       io.to(groupId).emit("message", message);
     } catch (error) {
       console.error("Error sending message:", error);
