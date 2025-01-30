@@ -1,30 +1,23 @@
-import express, { Request, Response, NextFunction } from "express";
-import dotenv from "dotenv";
-import { OAuth2Client } from "google-auth-library";
-import session from "express-session";
-import {
-  GoogleUserPayload,
-  pushSubscriptionSchema,
-  TokenPayload,
-} from "./types";
 import cookieParser from "cookie-parser";
-import { generateToken } from "./utils/jwt";
+import dotenv from "dotenv";
+import express, { Request, Response } from "express";
+import session from "express-session";
 //@ts-ignore
 import cors from "cors";
-import { authenticateToken } from "./middleware/auth";
-import { db } from "./prismaClient";
-import { getUserByEmail } from "./lib/user";
-import z from "zod";
-import groupRouter from "./api/group/index";
+import { createServer } from "http";
 import morgan from "morgan";
 import { Server } from "socket.io";
-import { createServer } from "http";
+import groupRouter from "./api/group/index";
+import { setupPushSubscriptionRoutes } from "./api/push-subscription";
+import sessionRouter from "./api/session/index";
+import { setupAuthRoutes } from "./auth/route";
+import { authenticateToken } from "./middleware/auth";
+import { db } from "./prismaClient";
 
 dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
-
 
 const io = new Server(httpServer, {
   cors: {
@@ -45,9 +38,8 @@ io.on("connection", (socket) => {
     try {
       const { content, groupId, userId } = data;
 
-      console.log("Received message:", data);
-      
-      
+      // console.log("Received message:", data);
+
       const message = await db.message.create({
         data: {
           content,
@@ -83,11 +75,29 @@ io.on("connection", (socket) => {
     socket.to(groupId).emit("stopTyping", { userId, username });
   });
 
+  // WebRTC Signaling for group calls
+  socket.on("offer", ({ groupId, offer, senderId }) => {
+    console.log(`Received offer from ${senderId} for group ${groupId}`);
+    // Broadcast the offer to all participants in the group
+    socket.to(groupId).emit("offer", { offer, senderId });
+  });
+
+  socket.on("answer", ({ groupId, answer, senderId }) => {
+    console.log(`Received answer from ${senderId} for group ${groupId}`);
+    // Broadcast the answer to the offer sender
+    socket.to(groupId).emit("answer", { answer, senderId });
+  });
+
+  socket.on("iceCandidate", ({ groupId, candidate, senderId }) => {
+    console.log(`Received ICE candidate from ${senderId} for group ${groupId}`);
+    // Broadcast the ICE candidate to all participants
+    socket.to(groupId).emit("iceCandidate", { candidate, senderId });
+  });
+
   socket.on("disconnect", () => {
     console.log("user disconnected", socket.id);
   });
 });
-
 
 app.use(express.json());
 app.use(cookieParser());
@@ -104,16 +114,8 @@ app.use(
 app.use("/api/groups", groupRouter);
 const port = process.env.PORT || 3000;
 
-// Google OAuth setup
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
-
-if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-  throw new Error("Missing required environment variables for Google OAuth");
-}
-
-const oAuth2Client = new OAuth2Client(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
+// session routes
+app.use("/api/sessions", sessionRouter);
 
 // Middleware for sessions
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -134,107 +136,6 @@ app.get("/", (_req: Request, res: Response) => {
   res.send("Express + TypeScript Server");
 });
 
-// Route to initiate Google login
-app.get("/auth/google", (_req: Request, res: Response) => {
-  const authUrl = oAuth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["profile", "email"],
-  });
-  res.redirect(authUrl);
-});
-
-app.get(
-  "/auth/google/callback",
-  //@ts-ignore
-  async (req: Request, res: Response, next: NextFunction) => {
-    const code = req.query.code;
-    if (typeof code !== "string") {
-      return res.status(400).send("Invalid code provided.");
-    }
-
-    try {
-      const { tokens } = await oAuth2Client.getToken(code);
-      oAuth2Client.setCredentials(tokens);
-
-      if (!tokens.id_token) {
-        throw new Error("No ID token received");
-      }
-
-      const ticket = await oAuth2Client.verifyIdToken({
-        idToken: tokens.id_token,
-        audience: CLIENT_ID,
-      });
-
-      console.log(ticket);
-      const payload = ticket.getPayload();
-      if (!payload) {
-        throw new Error("Failed to get payload from ID token");
-      }
-
-      const userPayload: GoogleUserPayload = {
-        email: payload.email || "",
-        name: payload.name || "",
-        picture: payload.picture || "",
-      };
-
-      // console.log(userPayload);
-
-      let user = await getUserByEmail(userPayload.email);
-      if (!user) {
-        user = await db.user.create({
-          data: {
-            email: userPayload.email,
-            name: userPayload.name,
-            avatarUrl: userPayload.picture,
-            createdAt: new Date(),
-          },
-        });
-      }
-
-      const tokenPayload: TokenPayload = {
-        ...userPayload,
-        id: user.id,
-      };
-
-      // Generate JWT token
-      const token = generateToken(tokenPayload);
-
-      // Set token in HTTP-only cookie
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-
-      // Redirect to frontend groups page
-      res.redirect(
-        `${process.env.FRONTEND_URL || "http://localhost:5173"}/groups`
-      );
-    } catch (error) {
-      console.error(error);
-      res.status(500).send("Authentication failed.");
-    }
-  }
-);
-
-app.post("/logout", (req: Request, res: Response) => {
-  try {
-    // Clear the token cookie
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
-
-    // Send a success response or redirect
-    res.status(200).json({ message: "Logged out successfully" });
-  } catch (error) {
-    console.error("Logout error:", error);
-    res.status(500).json({ message: "Failed to log out" });
-  }
-});
-
 // Protected route example
 //@ts-ignore
 app.get("/me", authenticateToken, (req: Request, res: Response) => {
@@ -242,91 +143,11 @@ app.get("/me", authenticateToken, (req: Request, res: Response) => {
   res.json(req.user);
 });
 
-app.post(
-  "/push-subscription",
-  //@ts-ignore
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const validatedData = pushSubscriptionSchema.parse(req.body);
-      const { endpoint, auth, p256dh } = validatedData;
-      const { id } = req.user as TokenPayload;
+// Setup auth routes
+setupAuthRoutes(app);
 
-      const existingSubscription = await db.pushSubscription.findUnique({
-        where: { endpoint },
-      });
-
-      if (existingSubscription) {
-        await db.pushSubscription.update({
-          where: { id: existingSubscription.id },
-          data: {
-            auth,
-            p256dh,
-          },
-        });
-      } else {
-        await db.pushSubscription.create({
-          data: {
-            endpoint,
-            auth,
-            p256dh,
-            userId: id,
-          },
-        });
-      }
-
-      res.status(200).json({
-        message: "Push subscription created successfully",
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ errors: error.errors });
-      }
-      console.error("Error creating push subscription:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  }
-);
-
-app.delete(
-  "/push-subscription",
-  //@ts-ignore
-  authenticateToken,
-  async (req: Request, res: Response) => {
-    try {
-      const validatedData = pushSubscriptionSchema.parse(req.body);
-      const { endpoint } = validatedData;
-      const { id } = req.user as TokenPayload;
-      const subscription = await db.pushSubscription.findUnique({
-        where: { endpoint },
-      });
-
-      if (!subscription) {
-        return res.status(404).json({ message: "Subscription not found" });
-      }
-
-      if (subscription.userId !== id) {
-        return res
-          .status(403)
-          .json({ message: "Unauthorized to delete this subscription" });
-      }
-
-      await db.pushSubscription.delete({
-        where: { endpoint },
-      });
-
-      res
-        .status(200)
-        .json({ message: "Push subscription deleted successfully" });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ errors: error.errors });
-      }
-      console.error("Error deleting push subscription:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  }
-);
+// Setup push subscription routes
+setupPushSubscriptionRoutes(app);
 
 httpServer.listen(port, () => {
   console.log(`[server]: Server is running at http://localhost:${port}`);
