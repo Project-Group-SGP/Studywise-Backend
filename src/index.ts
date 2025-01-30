@@ -18,7 +18,6 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
-
 const io = new Server(httpServer, {
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -26,19 +25,22 @@ const io = new Server(httpServer, {
   },
 });
 
+// Store active participants in each group call
+const groupCallParticipants = new Map(); // Map<groupId, Set<socketId>>
+
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
 
+  // Handle joining chat groups
   socket.on("joinGroup", (groupId) => {
     socket.join(groupId);
     console.log(`User ${socket.id} joined group ${groupId}`);
   });
 
+  // Chat message handling
   socket.on("sendMessage", async (data) => {
     try {
       const { content, groupId, userId } = data;
-
-      // console.log("Received message:", data);
 
       const message = await db.message.create({
         data: {
@@ -65,40 +67,102 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Typing indicators
   socket.on("typing", (data) => {
-    const { groupId, userId, username } = data;
-    socket.to(groupId).emit("typing", { userId, username });
+    const { groupId, userId, userName } = data;
+    socket.to(groupId).emit("typing", { userId, userName });
   });
 
   socket.on("stopTyping", (data) => {
-    const { groupId, userId, username } = data;
-    socket.to(groupId).emit("stopTyping", { userId, username });
+    const { groupId, userId, userName } = data;
+    socket.to(groupId).emit("stopTyping", { userId, userName });
   });
 
-  // WebRTC Signaling for group calls
-  socket.on("offer", ({ groupId, offer, senderId }) => {
-    console.log(`Received offer from ${senderId} for group ${groupId}`);
-    // Broadcast the offer to all participants in the group
-    socket.to(groupId).emit("offer", { offer, senderId });
+  // WebRTC Group Call Signaling
+
+  // Handle user joining a group call
+  socket.on("joinGroupCall", ({ groupId, userId }) => {
+    // Check if call exists
+    if (!groupCallParticipants.has(groupId)) {
+      groupCallParticipants.set(groupId, new Map());
+    }
+    
+    // Store more detailed participant info
+    groupCallParticipants.get(groupId).set(socket.id, {
+      userId,
+      joinedAt: Date.now()
+    });
+    
+    // Send existing participants with their user info
+    const participants = Array.from(groupCallParticipants.get(groupId).entries() as [string, { userId: string; joinedAt: number }][])
+      .map(([socketId, data]) => ({
+        socketId,
+        userId: data.userId
+      }));
+    
+    socket.emit("existingParticipants", participants);
+    socket.to(groupId).emit("userJoinedCall", { 
+      userId,
+      socketId: socket.id
+    });
   });
 
-  socket.on("answer", ({ groupId, answer, senderId }) => {
-    console.log(`Received answer from ${senderId} for group ${groupId}`);
-    // Broadcast the answer to the offer sender
-    socket.to(groupId).emit("answer", { answer, senderId });
+  // Handle user leaving a group call
+  socket.on("leaveGroupCall", ({ groupId }) => {
+    if (groupCallParticipants.has(groupId)) {
+      groupCallParticipants.get(groupId).delete(socket.id);
+      // Notify others that user left the call
+      socket.to(groupId).emit("userLeftCall", { socketId: socket.id });
+    }
   });
 
-  socket.on("iceCandidate", ({ groupId, candidate, senderId }) => {
-    console.log(`Received ICE candidate from ${senderId} for group ${groupId}`);
-    // Broadcast the ICE candidate to all participants
-    socket.to(groupId).emit("iceCandidate", { candidate, senderId });
+  // Handle WebRTC offer (sent when initiating a connection with a new participant)
+  socket.on("offer", ({ groupId, offer, senderId, receiverId }) => {
+    console.log(`Received offer from ${senderId} for ${receiverId} in group ${groupId}`);
+    // Add error handling
+    if (!groupCallParticipants.get(groupId)?.has(receiverId)) {
+      socket.emit("error", "Recipient not found in call");
+      return;
+    }
+    socket.to(receiverId).emit("offer", { 
+      offer,
+      senderId: socket.id
+    });
   });
 
+  // Handle WebRTC answer (sent in response to an offer)
+  socket.on("answer", ({ groupId, answer, senderId, receiverId }) => {
+    console.log(`Received answer from ${senderId} for ${receiverId} in group ${groupId}`);
+    // Forward the answer to the specific receiver
+    socket.to(receiverId).emit("answer", { 
+      answer,
+      senderId: socket.id
+    });
+  });
+
+  // Handle ICE candidates (for establishing peer connections)
+  socket.on("iceCandidate", ({ groupId, candidate, senderId, receiverId }) => {
+    console.log(`Received ICE candidate from ${senderId} for ${receiverId} in group ${groupId}`);
+    // Forward the ICE candidate to the specific receiver
+    socket.to(receiverId).emit("iceCandidate", { 
+      candidate,
+      senderId: socket.id
+    });
+  });
+
+  // Handle disconnections
   socket.on("disconnect", () => {
     console.log("user disconnected", socket.id);
+    // Remove user from all group calls they were part of
+    groupCallParticipants.forEach((participants, groupId) => {
+      if (participants.has(socket.id)) {
+        participants.delete(socket.id);
+        // Notify others in the group call
+        socket.to(groupId).emit("userLeftCall", { socketId: socket.id });
+      }
+    });
   });
 });
-
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
