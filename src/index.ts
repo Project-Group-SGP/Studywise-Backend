@@ -8,11 +8,12 @@ import { createServer } from "http";
 import morgan from "morgan";
 import { Server } from "socket.io";
 import OGrouter from "./api/ogData";
-import { db } from "prismaClient";
+import { db } from "./prismaClient";
 import groupRouter from "./api/group";
 import sessionRouter from "./api/session";
-import { setupAuthRoutes } from "auth/route";
-import { setupPushSubscriptionRoutes } from "api/push-subscription";
+import { setupAuthRoutes } from "./auth/route";
+import { setupPushSubscriptionRoutes } from "./api/push-subscription";
+import { authenticateToken } from "./middleware/auth";
 
 dotenv.config();
 
