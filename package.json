@@ -22,6 +22,8 @@
     "google-auth-library": "^9.15.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "node-cache": "^5.1.2",
+    "open-graph-scraper": "^6.9.0",
     "prisma": "^6.2.1",
     "socket.io": "^4.8.1",
     "web-push": "^3.6.7",

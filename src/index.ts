@@ -19,12 +19,12 @@ import groupRouter from "./api/group/index";
 import morgan from "morgan";
 import { Server } from "socket.io";
 import { createServer } from "http";
+import OGrouter from "./api/ogData";
 
 dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
-
 
 const io = new Server(httpServer, {
   cors: {
@@ -46,8 +46,7 @@ io.on("connection", (socket) => {
       const { content, groupId, userId } = data;
 
       console.log("Received message:", data);
-      
-      
+
       const message = await db.message.create({
         data: {
           content,
@@ -88,7 +87,6 @@ io.on("connection", (socket) => {
   });
 });
 
-
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan("dev"));
@@ -102,6 +100,7 @@ app.use(
 // group routes
 
 app.use("/api/groups", groupRouter);
+app.use("/api", OGrouter);
 const port = process.env.PORT || 3000;
 
 // Google OAuth setup
