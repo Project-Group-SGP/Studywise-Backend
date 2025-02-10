@@ -8,86 +8,88 @@ datasource db {
 }
 
 model User {
-  id                String          @id @default(auto()) @map("_id") @db.ObjectId
+  id                String             @id @default(auto()) @map("_id") @db.ObjectId
   name              String
-  email             String          @unique
+  email             String             @unique
   avatarUrl         String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  createdGroups     Group[]         @relation("GroupCreator")
-  memberOfGroups    Group[]         @relation("GroupMembers", fields: [groupIds], references: [id])
-  groupIds          String[]        @db.ObjectId
-  joinRequests      JoinRequest[]   @relation("UserJoinRequests")
-  messages          Message[]      
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  createdGroups     Group[]            @relation("GroupCreator")
+  memberOfGroups    Group[]            @relation("GroupMembers", fields: [groupIds], references: [id])
+  groupIds          String[]           @db.ObjectId
+  joinRequests      JoinRequest[]      @relation("UserJoinRequests")
+  messages          Message[]
   files             File[]
   pushSubscriptions PushSubscription[]
   sessions          Session[]
 }
 
 model Group {
-  id            String        @id @default(auto()) @map("_id") @db.ObjectId
-  name          String
-  subject       String
-  description   String?
-  code          String        @unique
-  creatorId     String        @db.ObjectId
-  creator       User          @relation("GroupCreator", fields: [creatorId], references: [id])
-  members       User[]        @relation("GroupMembers", fields: [memberIds], references: [id])
-  memberIds     String[]      @db.ObjectId
-  joinRequests  JoinRequest[] @relation("GroupJoinRequests")
-  messages      Message[]     
-  files         File[]    
-  sessions      Session[]    
-  createdAt     DateTime      @default(now())
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  subject      String
+  description  String?
+  code         String        @unique
+  creatorId    String        @db.ObjectId
+  creator      User          @relation("GroupCreator", fields: [creatorId], references: [id])
+  members      User[]        @relation("GroupMembers", fields: [memberIds], references: [id])
+  memberIds    String[]      @db.ObjectId
+  joinRequests JoinRequest[] @relation("GroupJoinRequests")
+  messages     Message[]
+  files        File[]
+  sessions     Session[]
+  createdAt    DateTime      @default(now())
 }
 
 model JoinRequest {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String    @db.ObjectId
-  groupId   String    @db.ObjectId
-  createdAt DateTime  @default(now())
-  user      User      @relation("UserJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
-  group     Group     @relation("GroupJoinRequests", fields: [groupId], references: [id], onDelete: Cascade)
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  groupId   String   @db.ObjectId
+  createdAt DateTime @default(now())
+  user      User     @relation("UserJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation("GroupJoinRequests", fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([userId, groupId])
 }
 
 model Message {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   content   String
-  userId    String    @db.ObjectId
-  groupId   String    @db.ObjectId
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  userId    String   @db.ObjectId
+  groupId   String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([groupId, createdAt])
 }
 
 model File {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   name      String
   url       String
-  userId    String    @db.ObjectId
-  groupId   String    @db.ObjectId
+  userId    String   @db.ObjectId
+  groupId   String   @db.ObjectId
   caption   String?
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
   @@index([groupId, createdAt])
 }
 
 model Session {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  description String?
-  groupId   String    @db.ObjectId
-  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  creatorID String    @db.ObjectId
-  creator   User      @relation(fields: [creatorID], references: [id])
-  createdAt DateTime  @default(now())
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  description   String?
+  time          DateTime
+  prerequisites String?
+  groupId       String   @db.ObjectId
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creatorID     String   @db.ObjectId
+  creator       User     @relation(fields: [creatorID], references: [id])
+  createdAt     DateTime @default(now())
 }
 
 model PushSubscription {
