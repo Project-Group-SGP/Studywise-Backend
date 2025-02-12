@@ -18,9 +18,9 @@ interface CreateGroupPayload {
 const createSessionSchema = z.object({
   name: z.string().min(1, "Session name is required").max(100),
   description: z.string().optional(),
-  groupId: z.string().min(1, "Group ID is required"),
+  groupId: z.string().length(24, "Invalid group ID format").regex(/^[0-9a-fA-F]{24}$/, "Invalid group ID format"),
   preRequisites: z.string().optional(),
-  time: z.date(),
+  time: z.string().transform((str) => new Date(str)),
 });
 
 const updateSessionSchema = z.object({
@@ -85,7 +85,9 @@ export const createSession = async (
   try {
     const user = req.user;
     console.log("Inside createSession");
-
+    console.log("User: ", user);
+    
+    console.log(req.body);
     if (!user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -263,5 +265,106 @@ export const updateSession = async (
   } catch (error) {
     console.error("Error updating session:", error);
     res.status(500).json({ message: "Failed to update session" });
+  }
+};
+
+// Add these new controller functions
+
+export const startSession = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    const { sessionId } = req.params;
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const session = await db.session.findUnique({
+      where: { id: sessionId },
+      include: { group: true }
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    if (session.creatorID !== user.id) {
+      return res.status(403).json({ message: "Only session creator can start the session" });
+    }
+
+    if (session.isStarted) {
+      return res.status(400).json({ message: "Session already started" });
+    }
+
+    const updatedSession = await db.session.update({
+      where: { id: sessionId },
+      data: {
+        isStarted: true,
+        startedAt: new Date()
+      }
+    });
+
+    return res.status(200).json({ 
+      message: "Session started successfully",
+      session: updatedSession 
+    });
+
+  } catch (error) {
+    console.error("Error starting session:", error);
+    return res.status(500).json({ message: "Failed to start session" });
+  }
+};
+
+export const endSession = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    const { sessionId } = req.params;
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const session = await db.session.findUnique({
+      where: { id: sessionId },
+      include: { group: true }
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    if (session.creatorID !== user.id) {
+      return res.status(403).json({ message: "Only session creator can end the session" });
+    }
+
+    if (!session.isStarted) {
+      return res.status(400).json({ message: "Session hasn't started yet" });
+    }
+
+    if (session.endedAt) {
+      return res.status(400).json({ message: "Session already ended" });
+    }
+
+    const updatedSession = await db.session.update({
+      where: { id: sessionId },
+      data: {
+        endedAt: new Date()
+      }
+    });
+
+    return res.status(200).json({ 
+      message: "Session ended successfully",
+      session: updatedSession 
+    });
+
+  } catch (error) {
+    console.error("Error ending session:", error);
+    return res.status(500).json({ message: "Failed to end session" });
   }
 };

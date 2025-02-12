@@ -20,4 +20,11 @@ router.delete('/:sessionId', authenticateToken, controller.deleteSession);
 // @ts-ignore
 router.put('/:sessionId', authenticateToken, controller.updateSession);
 
+// New routes for session management
+// @ts-ignore
+router.post('/:sessionId/start', authenticateToken, controller.startSession);
+// @ts-ignore
+router.post('/:sessionId/end', authenticateToken, controller.endSession);
+
+
 export default router;
