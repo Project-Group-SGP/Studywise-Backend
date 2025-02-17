@@ -80,16 +80,19 @@ model File {
 }
 
 model Session {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
   name          String
   description   String?
   time          DateTime
   prerequisites String?
-  groupId       String   @db.ObjectId
-  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  creatorID     String   @db.ObjectId
-  creator       User     @relation(fields: [creatorID], references: [id])
-  createdAt     DateTime @default(now())
+  isStarted     Boolean   @default(false)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  groupId       String    @db.ObjectId
+  group         Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creatorID     String    @db.ObjectId
+  creator       User      @relation(fields: [creatorID], references: [id])
+  createdAt     DateTime  @default(now())
 }
 
 model PushSubscription {
