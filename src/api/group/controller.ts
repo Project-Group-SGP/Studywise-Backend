@@ -38,7 +38,7 @@ export const getUserGroups = async (
       },
     });
 
-    console.log("Groups", groups);
+    // console.log("Groups", groups);
 
     return res.status(200).json({
       groups,
@@ -74,7 +74,7 @@ export const getGroupMembers = async (
       },
     });
 
-    console.log("Groups", groups);
+    // console.log("Groups", groups);
 
     return res.status(200).json({
       groups,
@@ -105,7 +105,7 @@ export const joinGroup = async (
     const { groupCode } = req.body as { groupCode: string };
 
     console.log("Joining group with code", groupCode);
-    console.log(req.body);
+    // console.log(req.body);
 
     if (!groupCode) {
       return res.status(400).json({ message: "Code is required" });
@@ -134,7 +134,7 @@ export const joinGroup = async (
     });
 
     console.log("Request sent to join group");
-    console.log(request);
+    // console.log(request);
 
     return res.status(200).json({ message: "Request sent to join group" });
   } catch (error) {
@@ -187,7 +187,7 @@ export const getJoinRequests = async (
       },
     });
 
-    console.log("Join requests", requests);
+    // console.log("Join requests", requests);
 
     return res.status(200).json({ requests });
   } catch (error) {
@@ -216,7 +216,7 @@ export const acceptJoinRequest = async (
     const { requestId } = req.body as { requestId: string };
 
     console.log("Accepting join request with id", requestId);
-    console.log(req.body);
+    // console.log(req.body);
 
     if (!requestId) {
       return res.status(400).json({ message: "Request ID is required" });
@@ -258,7 +258,7 @@ export const acceptJoinRequest = async (
     });
 
     console.log("Join request accepted");
-    console.log(request);
+    // console.log(request);
 
     return res.status(200).json({ message: "Join request accepted" });
   } catch (error) {
@@ -316,7 +316,7 @@ export const rejectJoinRequest = async (
     });
 
     console.log("Join request rejected");
-    console.log(request);
+    // console.log(request);
 
     return res.status(200).json({ message: "Join request rejected" });
   } catch (error) {
@@ -365,7 +365,7 @@ export const createGroup = async (
     });
 
     console.log("Group created successfully");
-    console.log(newGroup);
+    // console.log(newGroup);
 
     return res.status(201).json({
       message: "Group created successfully",
@@ -456,7 +456,7 @@ export const getGroupById = async (
       return res.status(404).json({ message: "Group not found" });
     }
 
-    console.log("Group found", group);
+    // console.log("Group found", group);
 
     // //format data
     // const formattedGroup = {
@@ -642,7 +642,7 @@ export const getGroupMessages = async (
       },
     });
 
-    console.log("Messages", messages);
+    // console.log("Messages", messages);
 
     return res.status(200).json({messages});
   } catch (error) {
