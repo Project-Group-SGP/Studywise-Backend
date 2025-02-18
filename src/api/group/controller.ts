@@ -36,9 +36,9 @@ export const getUserGroups = async (
       where: {
         creatorId: id,
       },
-      include:{
+      include: {
         sessions: true,
-      }
+      },
     });
 
     // console.log("Groups", groups);
@@ -607,19 +607,13 @@ export const getGroupMessages = async (
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Type assertion for id
     const { id } = user as TokenPayload;
-
-    // Destructure and validate request body
     const { groupId } = req.params as { groupId: string };
-
-    console.log("Getting messages for group with id", groupId);
 
     if (!groupId) {
       return res.status(400).json({ message: "Group ID is required" });
     }
 
-    // Find the group with the given ID
     const group = await db.group.findUnique({
       where: { id: groupId },
     });
@@ -628,12 +622,10 @@ export const getGroupMessages = async (
       return res.status(404).json({ message: "Group not found" });
     }
 
-    // Check if the user is a member of the group
     if (!group.memberIds.includes(id)) {
-      return res.status(400).json({ message: "Not a member of the group" });
+      return res.status(403).json({ message: "Not a member of this group" });
     }
 
-    // Get the messages for the group
     const messages = await db.message.findMany({
       where: { groupId },
       include: {
@@ -641,18 +633,107 @@ export const getGroupMessages = async (
           select: {
             id: true,
             name: true,
-            email: true,
             avatarUrl: true,
           },
         },
       },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
-    // console.log("Messages", messages);
+    const transformedMessages = messages.map((msg) => ({
+      id: msg.id,
+      type: "message",
+      content: msg.content,
+      userId: msg.userId,
+      groupId: msg.groupId,
+      createdAt: msg.createdAt,
+      updatedAt: msg.updatedAt,
+      user: {
+        name: msg.user.name,
+        avatar: msg.user.avatarUrl,
+      },
+    }));
 
-    return res.status(200).json({messages});
+    return res.status(200).json({ messages: transformedMessages });
   } catch (error) {
     console.error("Error getting group messages:", error);
     return res.status(500).json({ message: "Failed to get group messages" });
-  } 
-}
+  }
+};
+
+export const getGroupFiles = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    console.log("Inside getGroupFiles");
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = user as TokenPayload;
+    const { groupId } = req.params as { groupId: string };
+
+    if (!groupId) {
+      return res.status(400).json({ message: "Group ID is required" });
+    }
+
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!group.memberIds.includes(id)) {
+      return res.status(403).json({ message: "Not a member of this group" });
+    }
+
+    const files = await db.file.findMany({
+      where: { groupId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const transformedFiles = files.map((file) => ({
+      id: file.id,
+      type: "file",
+      name: file.name,
+      url: file.url,
+      fileType: file.fileType,
+      size: file.size,
+      caption: file.caption,
+      previewUrl: file.previewUrl,
+      thumbnailUrl: file.thumbnailUrl,
+      metadata: file.metadata,
+      userId: file.userId,
+      groupId: file.groupId,
+      createdAt: file.createdAt,
+      updatedAt: file.createdAt,
+      user: {
+        name: file.user.name,
+        avatar: file.user.avatarUrl,
+      },
+    }));
+
+    return res.status(200).json({ files: transformedFiles });
+  } catch (error) {
+    console.error("Error getting group files:", error);
+    return res.status(500).json({ message: "Failed to get group files" });
+  }
+};

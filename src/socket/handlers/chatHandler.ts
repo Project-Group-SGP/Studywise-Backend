@@ -1,11 +1,27 @@
 import { Server, Socket } from "socket.io";
 import { db } from "../../prismaClient";
+import sharp from "sharp";
+import { Readable } from "stream";
+import { v2 as cloudinary } from "cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export const handleChatEvents = (io: Server, socket: Socket) => {
   // Handle joining chat groups
   socket.on("joinGroup", (groupId) => {
     socket.join(groupId);
     console.log(`User ${socket.id} joined group ${groupId}`);
+  });
+
+  // Handle leaving chat groups
+  socket.on("leaveGroup", (groupId) => {
+    socket.leave(groupId);
+    console.log(`User ${socket.id} left group ${groupId}`);
   });
 
   // Chat message handling
@@ -33,7 +49,6 @@ export const handleChatEvents = (io: Server, socket: Socket) => {
       socket.emit("error", "Message sending failed");
     }
   });
-
   // Typing indicators
   socket.on("typing", (data) => {
     const { groupId, userId, userName } = data;
@@ -41,7 +56,7 @@ export const handleChatEvents = (io: Server, socket: Socket) => {
   });
 
   socket.on("stopTyping", (data) => {
-    const { groupId, userId, userName } = data;
-    socket.to(groupId).emit("stopTyping", { userId, userName });
+    const { groupId, userId } = data;
+    socket.to(groupId).emit("stopTyping", { userId });
   });
 };

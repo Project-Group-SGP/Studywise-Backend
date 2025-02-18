@@ -66,15 +66,20 @@ model Message {
 }
 
 model File {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  name      String
-  url       String
-  userId    String   @db.ObjectId
-  groupId   String   @db.ObjectId
-  caption   String?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  url          String
+  fileType     String
+  size         Int
+  userId       String   @db.ObjectId
+  groupId      String   @db.ObjectId
+  caption      String?
+  previewUrl   String?
+  thumbnailUrl String?
+  metadata     Json?    
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group        Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
 
   @@index([groupId, createdAt])
 }

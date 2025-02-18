@@ -36,4 +36,7 @@ router.post('/delete-group',authenticateToken,controller.deleteGroup);
 //@ts-ignore
 router.get('/:groupId/messages',authenticateToken,controller.getGroupMessages);
 
+// @ts-ignore
+router.get('/:groupId/files', authenticateToken, controller.getGroupFiles);
+
 export default router;

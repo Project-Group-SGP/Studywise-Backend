@@ -1,7 +1,14 @@
 import { Server } from "socket.io";
 import { handleChatEvents } from "./handlers/chatHandler";
-import { handleCallEvents, groupCallParticipants } from "./handlers/callHandler";
-import { handleSessionEvents, sessionParticipants } from "./handlers/sessionHandler";
+import {
+  handleCallEvents,
+  groupCallParticipants,
+} from "./handlers/callHandler";
+import {
+  handleSessionEvents,
+  sessionParticipants,
+} from "./handlers/sessionHandler";
+import { handleFileEvents } from "./handlers/fileHandler";
 
 export const initializeSocket = (io: Server) => {
   io.on("connection", (socket) => {
@@ -11,7 +18,7 @@ export const initializeSocket = (io: Server) => {
     handleChatEvents(io, socket);
     handleCallEvents(io, socket);
     handleSessionEvents(io, socket);
-    
+    handleFileEvents(io, socket);
 
     // Handle disconnection
     socket.on("disconnect", () => {
@@ -39,4 +46,4 @@ export const initializeSocket = (io: Server) => {
       });
     });
   });
-}; 
+};
