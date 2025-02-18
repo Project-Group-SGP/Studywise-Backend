@@ -7,15 +7,19 @@ import { lookup } from "mime-types";
 import { Prisma } from "@prisma/client";
 import ffmpeg from "fluent-ffmpeg";
 import { promisify } from "util";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
+import pdf2pic from "pdf2pic";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { UploadApiOptions } from "cloudinary";
 import { exec as execCb } from "child_process";
+import { createCanvas } from "canvas";
+import libre from "libreoffice-convert";
+import util from "util";
 
 const exec = promisify(execCb);
-
+const libreConvert = util.promisify(libre.convert);
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -367,6 +371,59 @@ interface ProcessedFile {
   metadata: Record<string, any>;
 }
 
+// Helper function for PDF processing
+async function createPdfPreview(pdfBuffer: Buffer): Promise<{
+  previewBuffer: Buffer;
+  thumbnailBuffer: Buffer;
+  pageCount: number;
+}> {
+  // Save PDF to temp file
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-preview-"));
+  const pdfPath = path.join(tempDir, "document.pdf");
+  fs.writeFileSync(pdfPath, pdfBuffer);
+
+  // Use pdf2pic to convert first page to image
+  const converter = pdf2pic.fromPath(pdfPath, {
+    density: 300,
+    savePath: tempDir,
+    saveFilename: "page",
+    format: "png",
+    width: 1200,
+    height: 1200,
+  });
+
+  // Get PDF document for metadata
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pageCount = pdfDoc.getPageCount();
+
+  // Convert first page
+  converter(1, { responseType: "image" }).then((resolve) => {
+    console.log("Page 1 is now converted as image");
+
+    return resolve;
+  });
+
+  // Read the generated preview
+  const previewPath = path.join(tempDir, "page.1.png");
+  const previewBuffer = fs.readFileSync(previewPath);
+
+  // Create thumbnail from preview
+  const thumbnailBuffer = await sharp(previewBuffer)
+    .resize(300, 300, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
+    })
+    .toBuffer();
+
+  // Clean up
+  fs.readdirSync(tempDir).forEach((file) =>
+    fs.unlinkSync(path.join(tempDir, file))
+  );
+  fs.rmdirSync(tempDir);
+
+  return { previewBuffer, thumbnailBuffer, pageCount };
+}
+
 async function processDocument(
   file: Buffer,
   fileType: string
@@ -375,34 +432,60 @@ async function processDocument(
   let previewBuffer: Buffer | undefined;
   let thumbnailBuffer: Buffer | undefined;
 
-  if (fileType === "application/pdf") {
-    const pdfDoc = await PDFDocument.load(file);
-    metadata.pageCount = pdfDoc.getPageCount();
+  try {
+    if (fileType === "application/pdf") {
+      const {
+        previewBuffer: preview,
+        thumbnailBuffer: thumbnail,
+        pageCount,
+      } = await createPdfPreview(file);
+      previewBuffer = preview;
+      thumbnailBuffer = thumbnail;
+      metadata.pageCount = pageCount;
+    } else if (
+      fileType === "application/msword" ||
+      fileType ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      fileType === "application/vnd.ms-excel" ||
+      fileType ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      fileType === "application/vnd.ms-powerpoint" ||
+      fileType ===
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      fileType === "application/vnd.oasis.opendocument.text" ||
+      fileType === "application/vnd.oasis.opendocument.spreadsheet" ||
+      fileType === "application/vnd.oasis.opendocument.presentation"
+    ) {
+      // Convert Office documents to PDF first using LibreOffice
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "office-doc-"));
+      const docPath = path.join(
+        tempDir,
+        `document${getExtensionFromMimeType(fileType)}`
+      );
+      const pdfPath = path.join(tempDir, "document.pdf");
 
-    // For thumbnails, we can render the first page if the PDF has pages
-    if (pdfDoc.getPageCount() > 0) {
-      // This is a simplified approach - in production you would use a PDF renderer
-      // Here we just generate a placeholder
-      thumbnailBuffer = await sharp({
-        create: {
-          width: 300,
-          height: 300,
-          channels: 4,
-          background: { r: 240, g: 240, b: 240, alpha: 1 },
-        },
-      })
-        .composite([
-          {
-            input: Buffer.from(
-              '<svg><text x="20" y="160" font-family="Arial" font-size="24">PDF Preview</text></svg>'
-            ),
-            top: 0,
-            left: 0,
-          },
-        ])
-        .png()
-        .toBuffer();
+      fs.writeFileSync(docPath, file);
+
+      // Convert to PDF
+      const pdfBuffer = await libreConvert(file, "pdf", undefined);
+      fs.writeFileSync(pdfPath, pdfBuffer);
+
+      // Now create preview from the PDF
+      const { previewBuffer: preview, thumbnailBuffer: thumbnail } =
+        await createPdfPreview(pdfBuffer);
+      previewBuffer = preview;
+      thumbnailBuffer = thumbnail;
+
+      // Clean up
+      fs.readdirSync(tempDir).forEach((file) =>
+        fs.unlinkSync(path.join(tempDir, file))
+      );
+      fs.rmdirSync(tempDir);
     }
+  } catch (error) {
+    console.error(`Error generating document preview: ${error}`);
+    // Fallback to placeholder if preview generation fails
+    thumbnailBuffer = await createPlaceholderThumbnail(fileType);
   }
 
   return {
@@ -412,6 +495,38 @@ async function processDocument(
   };
 }
 
+// Helper to create placeholder thumbnail when rendering fails
+async function createPlaceholderThumbnail(fileType: string): Promise<Buffer> {
+  const fileConfig = FILE_CONFIGS[fileType];
+  const category = fileConfig?.category || "unknown";
+
+  return await sharp({
+    create: {
+      width: 300,
+      height: 300,
+      channels: 4,
+      background: { r: 240, g: 240, b: 240, alpha: 1 },
+    },
+  })
+    .composite([
+      {
+        input: Buffer.from(
+          `<svg width="300" height="300">
+            <text x="20" y="160" font-family="Arial" font-size="24" fill="#888">${
+              category.charAt(0).toUpperCase() + category.slice(1)
+            } Preview</text>
+            <text x="20" y="190" font-family="Arial" font-size="18" fill="#888">(Preview generation failed)</text>
+          </svg>`
+        ),
+        top: 0,
+        left: 0,
+      },
+    ])
+    .png()
+    .toBuffer();
+}
+
+// Process image (same as before, includes actual thumbnail generation)
 async function processImage(
   file: Buffer,
   fileType: string
@@ -435,6 +550,7 @@ async function processImage(
   };
 }
 
+// Enhanced video processing function to ensure thumbnail generation
 async function processVideo(
   file: Buffer,
   fileType: string
@@ -453,23 +569,50 @@ async function processVideo(
 
     fs.writeFileSync(tempFilePath, file);
 
-    // Generate thumbnail at 1 second mark
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(tempFilePath)
-        .on("error", (err) => reject(err))
-        .on("end", () => resolve())
-        .screenshots({
-          count: 1,
-          folder: tempDir,
-          filename: "thumbnail.jpg",
-          timestamps: [1],
-          size: "300x300",
-        });
+    // Generate thumbnail at multiple positions in case the 1s mark is black
+    const thumbnailPromises = [1, 3, 5, 10].map((timestamp) => {
+      return new Promise<void>((resolve, reject) => {
+        const outputPath = path.join(tempDir, `thumbnail-${timestamp}.jpg`);
+        ffmpeg(tempFilePath)
+          .on("error", (err) => reject(err))
+          .on("end", () => resolve())
+          .screenshots({
+            count: 1,
+            folder: tempDir,
+            filename: `thumbnail-${timestamp}.jpg`,
+            timestamps: [timestamp],
+            size: "300x300",
+          });
+      });
     });
 
-    if (fs.existsSync(thumbnailPath)) {
-      thumbnailBuffer = fs.readFileSync(thumbnailPath);
-      metadata.hasThumbnail = true;
+    await Promise.all(
+      thumbnailPromises.map((p) =>
+        p.catch((e) => console.warn("Error generating thumbnail frame:", e))
+      )
+    );
+
+    // Find the first successfully generated thumbnail
+    const thumbnailFiles = fs
+      .readdirSync(tempDir)
+      .filter((file) => file.startsWith("thumbnail-"))
+      .map((file) => path.join(tempDir, file));
+
+    if (thumbnailFiles.length > 0) {
+      // Use the first non-empty thumbnail
+      for (const thumbPath of thumbnailFiles) {
+        if (fs.statSync(thumbPath).size > 0) {
+          thumbnailBuffer = fs.readFileSync(thumbPath);
+          metadata.hasThumbnail = true;
+          break;
+        }
+      }
+    }
+
+    // Fallback if no thumbnail was generated
+    if (!thumbnailBuffer) {
+      console.warn("No video thumbnail generated, creating placeholder");
+      thumbnailBuffer = await createPlaceholderThumbnail(fileType);
     }
 
     // Get video metadata like duration
@@ -498,14 +641,19 @@ async function processVideo(
     }
 
     // Clean up temporary files
+    thumbnailFiles.forEach((file) => {
+      try {
+        fs.unlinkSync(file);
+      } catch (e) {
+        /* ignore */
+      }
+    });
     fs.unlinkSync(tempFilePath);
-    if (fs.existsSync(thumbnailPath)) {
-      fs.unlinkSync(thumbnailPath);
-    }
     fs.rmdirSync(tempDir);
   } catch (error) {
     console.error("Error processing video:", error);
-    // Continue without thumbnail if we encounter issues
+    // Create placeholder thumbnail
+    thumbnailBuffer = await createPlaceholderThumbnail(fileType);
   }
 
   return {
@@ -514,6 +662,7 @@ async function processVideo(
   };
 }
 
+// Enhanced audio processing to generate actual waveform
 async function processAudio(
   file: Buffer,
   fileType: string
@@ -760,15 +909,6 @@ export const handleFileUpload = async (
 
     // Create a message for the file upload
     const fileTypeDisplay = config.description || config.category;
-    await db.message.create({
-      data: {
-        content: `Shared a ${fileTypeDisplay}: ${fileName}${
-          caption ? ` - ${caption}` : ""
-        }`,
-        userId,
-        groupId,
-      },
-    });
 
     // Emit success to the group
     io.to(groupId).emit("fileUploaded", {
