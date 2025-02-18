@@ -36,6 +36,9 @@ export const getUserGroups = async (
       where: {
         creatorId: id,
       },
+      include:{
+        sessions: true,
+      }
     });
 
     // console.log("Groups", groups);
@@ -71,6 +74,9 @@ export const getGroupMembers = async (
         memberIds: {
           has: id,
         },
+      },
+      include: {
+        sessions: true,
       },
     });
 

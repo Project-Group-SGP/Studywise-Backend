@@ -3,7 +3,7 @@ import { sendSessionReminders } from "../api/session/notification.service";
 
 // Run every 1 minutes
 export const initializeSessionReminders = () => {
-  cron.schedule("* * 4 * *", async () => {
+  cron.schedule("25 * * * *", async () => {
     console.log("Checking for upcoming sessions...", new Date().toISOString());
     try {
       await sendSessionReminders();

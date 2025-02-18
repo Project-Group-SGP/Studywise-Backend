@@ -27,13 +27,13 @@ export const sendSessionReminders = async () => {
 
     const upcomingSessions = await db.session.findMany({
       where: {
-        // time: {
-        //   // Only find sessions starting in the next 30 minutes
-        //   gt: now,
-        //   lte: thirtyMinutesFromNow,
-        // },
-        // isStarted: false,
-        // endedAt: null,
+        time: {
+          // Only find sessions starting in the next 30 minutes
+          gt: now,
+          lte: thirtyMinutesFromNow,
+        },
+        isStarted: false,
+        endedAt: null,
       },
       include: {
         creator: true,
