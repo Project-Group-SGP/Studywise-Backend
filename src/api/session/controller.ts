@@ -213,6 +213,8 @@ export const updateSession = async (
     const updateBodySchema = z.object({
       name: z.string().min(1, "Session name is required").max(100),
       description: z.string().optional(),
+      time: z.string().transform((str) => new Date(str)),
+      prerequisites: z.string().optional().nullable(), 
     });
 
     const validationResult = updateBodySchema.safeParse(req.body);
@@ -224,7 +226,7 @@ export const updateSession = async (
       });
     }
 
-    const { name, description } = validationResult.data;
+    let { name, description , time ,prerequisites } = validationResult.data;
 
     // Check if user is a member of the group that owns the session
     const session = await db.session.findUnique({
@@ -251,6 +253,10 @@ export const updateSession = async (
         .json({ message: "You are not a member of this group" });
     }
 
+
+    if(prerequisites ==  null || prerequisites === undefined || prerequisites === "null"){
+      prerequisites = "";
+    }
     const updatedSession = await db.session.update({
       where: {
         id: sessionId,
@@ -258,6 +264,8 @@ export const updateSession = async (
       data: {
         name,
         description,
+        time ,
+        prerequisites 
       },
     });
 
