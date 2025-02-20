@@ -377,51 +377,79 @@ async function createPdfPreview(pdfBuffer: Buffer): Promise<{
   thumbnailBuffer: Buffer;
   pageCount: number;
 }> {
-  // Save PDF to temp file
+  // Create temp directory
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-preview-"));
   const pdfPath = path.join(tempDir, "document.pdf");
-  fs.writeFileSync(pdfPath, pdfBuffer);
 
-  // Use pdf2pic to convert first page to image
-  const converter = pdf2pic.fromPath(pdfPath, {
-    density: 300,
-    savePath: tempDir,
-    saveFilename: "page",
-    format: "png",
-    width: 1200,
-    height: 1200,
-  });
+  try {
+    // Save PDF to temp file
+    fs.writeFileSync(pdfPath, pdfBuffer);
 
-  // Get PDF document for metadata
-  const pdfDoc = await PDFDocument.load(pdfBuffer);
-  const pageCount = pdfDoc.getPageCount();
+    // Get PDF document for metadata
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const pageCount = pdfDoc.getPageCount();
 
-  // Convert first page
-  converter(1, { responseType: "image" }).then((resolve) => {
-    console.log("Page 1 is now converted as image");
+    // Use pdf2pic to convert first page to image
+    const converter = pdf2pic.fromPath(pdfPath, {
+      density: 300,
+      savePath: tempDir,
+      saveFilename: "page",
+      format: "png",
+      width: 1200,
+      height: 1200,
+    });
 
-    return resolve;
-  });
+    // Convert first page and wait for completion
+    await converter(1);
 
-  // Read the generated preview
-  const previewPath = path.join(tempDir, "page.1.png");
-  const previewBuffer = fs.readFileSync(previewPath);
+    // Read the generated preview
+    const previewPath = path.join(tempDir, "page.1.png");
 
-  // Create thumbnail from preview
-  const thumbnailBuffer = await sharp(previewBuffer)
-    .resize(300, 300, {
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
-    })
-    .toBuffer();
+    // Add retry logic with delay for file reading
+    const maxRetries = 3;
+    let retryCount = 0;
+    let previewBuffer: Buffer;
 
-  // Clean up
-  fs.readdirSync(tempDir).forEach((file) =>
-    fs.unlinkSync(path.join(tempDir, file))
-  );
-  fs.rmdirSync(tempDir);
+    while (retryCount < maxRetries) {
+      try {
+        if (fs.existsSync(previewPath)) {
+          previewBuffer = fs.readFileSync(previewPath);
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+        retryCount++;
+      } catch (err) {
+        if (retryCount === maxRetries - 1) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        retryCount++;
+      }
+    }
 
-  return { previewBuffer, thumbnailBuffer, pageCount };
+    if (!previewBuffer!) {
+      throw new Error("Failed to generate preview after maximum retries");
+    }
+
+    // Create thumbnail from preview
+    const thumbnailBuffer = await sharp(previewBuffer)
+      .resize(300, 300, {
+        fit: "contain",
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .toBuffer();
+
+    return { previewBuffer, thumbnailBuffer, pageCount };
+  } finally {
+    // Clean up temp files
+    try {
+      const files = fs.readdirSync(tempDir);
+      for (const file of files) {
+        fs.unlinkSync(path.join(tempDir, file));
+      }
+      fs.rmdirSync(tempDir);
+    } catch (err) {
+      console.warn("Error cleaning up temporary files:", err);
+    }
+  }
 }
 
 async function processDocument(
@@ -907,14 +935,11 @@ export const handleFileUpload = async (
       },
     });
 
-    // Create a message for the file upload
-    const fileTypeDisplay = config.description || config.category;
+    console.log("File uploaded:", fileDoc);
 
+    io.to(groupId).emit("fileUploaded", { file: { ...fileDoc, type: "file" } });
     // Emit success to the group
-    io.to(groupId).emit("fileUploaded", {
-      file: { ...fileDoc, type: "file" },
-      message: "File uploaded successfully",
-    });
+    io.to(groupId).emit("message", { file: { ...fileDoc, type: "file" } });
 
     return fileDoc;
   } catch (error) {

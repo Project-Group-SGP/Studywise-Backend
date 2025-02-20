@@ -43,7 +43,7 @@ export const handleChatEvents = (io: Server, socket: Socket) => {
       });
 
       // Broadcast the message to all clients in the group
-      io.to(groupId).emit("message", message);
+      io.to(groupId).emit("message", { ...message, type: "message" });
     } catch (error) {
       console.error("Error sending message:", error);
       socket.emit("error", "Message sending failed");
