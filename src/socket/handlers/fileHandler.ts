@@ -27,6 +27,51 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const getCloudinaryUploadOptions = (
+  fileType: string,
+  groupId: string,
+  fileName: string,
+  tags: string[] | undefined
+): UploadApiOptions => {
+  const baseOptions: UploadApiOptions = {
+    folder: `study-groups/${groupId}`,
+    resource_type: fileType.startsWith("video")
+      ? "video"
+      : fileType.startsWith("image")
+      ? "image"
+      : "raw",
+    public_id: `${Date.now()}-${fileName}`,
+    tags: tags || [],
+    access_mode: "public",
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false,
+  };
+
+  if (fileType.startsWith("video")) {
+    return {
+      ...baseOptions,
+      chunk_size: 6000000, // 6MB chunks
+      eager: [
+        { streaming_profile: "hd", format: "m3u8" }, // Enable HLS streaming
+      ],
+      eager_async: true,
+      resource_type: "video",
+    };
+  }
+
+  if (fileType.startsWith("image")) {
+    return {
+      ...baseOptions,
+      resource_type: "image",
+      eager: [{ quality: "auto", fetch_format: "auto" }],
+      eager_async: true,
+    };
+  }
+
+  return baseOptions;
+};
+
 interface FileConfig {
   maxSize: number;
   category:
@@ -293,6 +338,14 @@ const FILE_CONFIGS: Record<string, FileConfig> = {
     allowedInChat: true,
     description: "QuickTime Video",
     extensions: [".mov"],
+  },
+  "video/x-matroska": {
+    maxSize: 200 * 1024 * 1024,
+    category: "video",
+    generateThumbnail: true,
+    allowedInChat: true,
+    description: "Matroska Video",
+    extensions: [".mkv"],
   },
 
   // Archives
@@ -863,33 +916,54 @@ export const handleFileUpload = async (
       config
     );
 
-    // Upload main file
-    const mainUpload = await uploadToCloudinary(file, {
-      folder: `study-groups/${groupId}`,
-      resource_type:
-        config.category === "video" || config.category === "audio"
-          ? "video"
-          : config.category === "image"
-          ? "image"
-          : "raw",
-      public_id: `${Date.now()}-${fileName}`,
-      tags: tags || [],
+    const mainUploadOptions = getCloudinaryUploadOptions(
+      fileType,
+      groupId,
+      fileName,
+      tags
+    );
+
+    // Upload main file with progress tracking
+    const mainUpload = await new Promise<UploadResult>((resolve, reject) => {
+      let uploadProgress = 0;
+      const stream = Readable.from(file);
+      const uploadStream = cloudinary.uploader.upload_stream(
+        mainUploadOptions,
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result as UploadResult);
+        }
+      );
+
+      // Track upload progress
+      stream.on("data", (chunk) => {
+        uploadProgress += chunk.length;
+        const percentage = Math.round((uploadProgress / file.length) * 100);
+        socket.emit("uploadProgress", { progress: percentage });
+      });
+
+      stream.pipe(uploadStream);
     });
 
-    // Upload preview and thumbnail if generated
+    // Upload preview with specific options if available
     const previewUploadPromise = previewBuffer
       ? uploadToCloudinary(previewBuffer, {
           folder: `study-groups/${groupId}/previews`,
           resource_type: "image",
           public_id: `preview-${mainUpload.public_id}`,
+          format: "jpg",
+          quality: "auto",
         })
       : Promise.resolve(null);
 
+    // Upload thumbnail with specific options if available
     const thumbnailUploadPromise = thumbnailBuffer
       ? uploadToCloudinary(thumbnailBuffer, {
           folder: `study-groups/${groupId}/thumbnails`,
           resource_type: "image",
           public_id: `thumb-${mainUpload.public_id}`,
+          format: "jpg",
+          quality: "auto",
         })
       : Promise.resolve(null);
 
@@ -908,6 +982,8 @@ export const handleFileUpload = async (
       cloudinaryPublicId: mainUpload.public_id,
       fileExtension: fileName.split(".").pop()?.toLowerCase(),
       tags: tags || [],
+      // Add streaming URL for videos
+      streamingUrl: mainUpload.eager?.[0]?.secure_url,
     };
 
     // Save file information to database
@@ -938,7 +1014,6 @@ export const handleFileUpload = async (
     console.log("File uploaded:", fileDoc);
 
     io.to(groupId).emit("fileUploaded", { file: { ...fileDoc, type: "file" } });
-    // Emit success to the group
     io.to(groupId).emit("message", { file: { ...fileDoc, type: "file" } });
 
     return fileDoc;
