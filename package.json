@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.22.0",
     "@prisma/client": "^6.2.1",
     "@types/morgan": "^1.9.9",
     "@types/web-push": "^3.6.4",
