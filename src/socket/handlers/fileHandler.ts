@@ -1,70 +1,25 @@
-import { Server, Socket } from "socket.io";
-import { db } from "../../prismaClient";
-import sharp from "sharp";
-import { Readable } from "stream";
-import { v2 as cloudinary } from "cloudinary";
-import { lookup } from "mime-types";
 import { Prisma } from "@prisma/client";
+import { exec as execCb } from "child_process";
+import { v2 as cloudinary, UploadApiOptions } from "cloudinary";
 import ffmpeg from "fluent-ffmpeg";
-import { promisify } from "util";
-import { PDFDocument, rgb } from "pdf-lib";
-import pdf2pic from "pdf2pic";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { UploadApiOptions } from "cloudinary";
-import { exec as execCb } from "child_process";
-import { createCanvas } from "canvas";
-import libre from "libreoffice-convert";
-import util from "util";
+import { PDFDocument } from "pdf-lib";
+import pdf2pic from "pdf2pic";
+import sharp from "sharp";
+import { Server, Socket } from "socket.io";
+import { Readable } from "stream";
+import { promisify } from "util";
+import { db } from "../../prismaClient";
 
 const execAsync = promisify(execCb);
-const libreConvert = util.promisify(libre.convert);
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-async function getLibreOfficePath(): Promise<string> {
-  // Common LibreOffice installation paths for different OS
-  const possiblePaths = {
-    win32: [
-      "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
-      "C:\\Program Files (x86)\\LibreOffice 7\\program\\soffice.exe",
-      "C:\\Program Files\\LibreOffice 7\\program\\soffice.exe",
-    ],
-    darwin: [
-      "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-      "/usr/local/bin/soffice",
-    ],
-    linux: [
-      "/usr/bin/soffice",
-      "/usr/lib/libreoffice/program/soffice",
-      "soffice",
-    ],
-  };
-
-  const platform = process.platform as "win32" | "darwin" | "linux";
-  const paths = possiblePaths[platform] || [];
-
-  for (const path of paths) {
-    try {
-      await fs.promises.access(path);
-      return path;
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error(
-    `LibreOffice not found. Please install LibreOffice and ensure it's in one of these locations: ${paths.join(
-      ", "
-    )}`
-  );
-}
 
 const getCloudinaryUploadOptions = (
   fileType: string,
@@ -143,7 +98,6 @@ const FILE_CONFIGS: Record<string, FileConfig> = {
   "application/msword": {
     maxSize: 25 * 1024 * 1024,
     category: "document",
-    generatePreview: true,
     allowedInChat: true,
     description: "Microsoft Word Document",
     extensions: [".doc"],
@@ -151,25 +105,27 @@ const FILE_CONFIGS: Record<string, FileConfig> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
     maxSize: 25 * 1024 * 1024,
     category: "document",
-    generatePreview: true,
     allowedInChat: true,
     description: "Microsoft Word Document",
     extensions: [".docx"],
   },
-  "application/vnd.oasis.opendocument.text": {
+  "application/vnd.ms-excel": {
     maxSize: 25 * 1024 * 1024,
     category: "document",
-    generatePreview: true,
     allowedInChat: true,
-    description: "OpenDocument Text",
-    extensions: [".odt"],
+    description: "Microsoft Excel Spreadsheet",
+    extensions: [".xls"],
   },
-
-  // Presentations
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+    maxSize: 25 * 1024 * 1024,
+    category: "document",
+    allowedInChat: true,
+    description: "Microsoft Excel Spreadsheet",
+    extensions: [".xlsx"],
+  },
   "application/vnd.ms-powerpoint": {
     maxSize: 50 * 1024 * 1024,
     category: "presentation",
-    generatePreview: true,
     generateThumbnail: true,
     allowedInChat: true,
     description: "Microsoft PowerPoint Presentation",
@@ -178,48 +134,33 @@ const FILE_CONFIGS: Record<string, FileConfig> = {
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": {
     maxSize: 50 * 1024 * 1024,
     category: "presentation",
-    generatePreview: true,
     generateThumbnail: true,
     allowedInChat: true,
     description: "Microsoft PowerPoint Presentation",
     extensions: [".pptx"],
   },
+  "application/vnd.oasis.opendocument.text": {
+    maxSize: 25 * 1024 * 1024,
+    category: "document",
+    allowedInChat: true,
+    description: "OpenDocument Text",
+    extensions: [".odt"],
+  },
+  "application/vnd.oasis.opendocument.spreadsheet": {
+    maxSize: 25 * 1024 * 1024,
+    category: "document",
+    allowedInChat: true,
+    description: "OpenDocument Spreadsheet",
+    extensions: [".ods"],
+  },
   "application/vnd.oasis.opendocument.presentation": {
     maxSize: 50 * 1024 * 1024,
     category: "presentation",
-    generatePreview: true,
     generateThumbnail: true,
     allowedInChat: true,
     description: "OpenDocument Presentation",
     extensions: [".odp"],
   },
-
-  // Spreadsheets
-  "application/vnd.ms-excel": {
-    maxSize: 25 * 1024 * 1024,
-    category: "document",
-    generatePreview: true,
-    allowedInChat: true,
-    description: "Microsoft Excel Spreadsheet",
-    extensions: [".xls"],
-  },
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
-    maxSize: 25 * 1024 * 1024,
-    category: "document",
-    generatePreview: true,
-    allowedInChat: true,
-    description: "Microsoft Excel Spreadsheet",
-    extensions: [".xlsx"],
-  },
-  "application/vnd.oasis.opendocument.spreadsheet": {
-    maxSize: 25 * 1024 * 1024,
-    category: "document",
-    generatePreview: true,
-    allowedInChat: true,
-    description: "OpenDocument Spreadsheet",
-    extensions: [".ods"],
-  },
-
   // Text files
   "text/plain": {
     maxSize: 10 * 1024 * 1024,
@@ -351,6 +292,14 @@ const FILE_CONFIGS: Record<string, FileConfig> = {
     allowedInChat: true,
     description: "OGG Audio",
     extensions: [".ogg"],
+  },
+  "audio/webm": {
+    maxSize: 50 * 1024 * 1024,
+    category: "audio",
+    generateThumbnail: true,
+    allowedInChat: true,
+    description: "WebM Audio",
+    extensions: [".weba"],
   },
 
   // Video
@@ -544,99 +493,6 @@ async function createPdfPreview(pdfBuffer: Buffer): Promise<{
   }
 }
 
-async function processDocument(
-  file: Buffer,
-  fileType: string
-): Promise<ProcessedFile> {
-  const metadata: Record<string, any> = {};
-  let previewBuffer: Buffer | undefined;
-  let thumbnailBuffer: Buffer | undefined;
-
-  try {
-    if (fileType === "application/pdf") {
-      const {
-        previewBuffer: preview,
-        thumbnailBuffer: thumbnail,
-        pageCount,
-      } = await createPdfPreview(file);
-      previewBuffer = preview;
-      thumbnailBuffer = thumbnail;
-      metadata.pageCount = pageCount;
-    } else if (
-      fileType === "application/msword" ||
-      fileType ===
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      fileType === "application/vnd.ms-excel" ||
-      fileType ===
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      fileType === "application/vnd.ms-powerpoint" ||
-      fileType ===
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-      fileType === "application/vnd.oasis.opendocument.text" ||
-      fileType === "application/vnd.oasis.opendocument.spreadsheet" ||
-      fileType === "application/vnd.oasis.opendocument.presentation"
-    ) {
-      // Create temporary directory with proper path handling
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "office-doc-"));
-      const docPath = path.join(
-        tempDir,
-        `document${getExtensionFromMimeType(fileType)}`
-      );
-      const pdfPath = path.join(tempDir, "document.pdf");
-
-      try {
-        // Write the input file
-        fs.writeFileSync(docPath, file);
-
-        // Get the correct LibreOffice path for the current OS
-        const librePath = await getLibreOfficePath();
-
-        // Construct the command with proper path escaping
-        const command =
-          process.platform === "win32"
-            ? `"${librePath}" --headless --convert-to pdf --outdir "${tempDir}" "${docPath}"`
-            : `${librePath} --headless --convert-to pdf --outdir "${tempDir}" "${docPath}"`;
-
-        // Execute the conversion
-        await execAsync(command);
-
-        // Read the converted PDF
-        const pdfBuffer = fs.readFileSync(pdfPath);
-
-        // Generate preview from PDF
-        const { previewBuffer: preview, thumbnailBuffer: thumbnail } =
-          await createPdfPreview(pdfBuffer);
-        previewBuffer = preview;
-        thumbnailBuffer = thumbnail;
-      } catch (error) {
-        console.error("LibreOffice conversion error:", error);
-        throw error;
-      } finally {
-        // Clean up temporary files
-        try {
-          const files = fs.readdirSync(tempDir);
-          for (const file of files) {
-            fs.unlinkSync(path.join(tempDir, file));
-          }
-          fs.rmdirSync(tempDir);
-        } catch (cleanupError) {
-          console.warn("Error cleaning up temp files:", cleanupError);
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`Error generating document preview: ${error}`);
-    // Fallback to placeholder if preview generation fails
-    thumbnailBuffer = await createPlaceholderThumbnail(fileType);
-  }
-
-  return {
-    previewBuffer,
-    thumbnailBuffer,
-    metadata,
-  };
-}
-
 // Helper to create placeholder thumbnail when rendering fails
 async function createPlaceholderThumbnail(fileType: string): Promise<Buffer> {
   const fileConfig = FILE_CONFIGS[fileType];
@@ -804,16 +660,13 @@ async function processVideo(
   };
 }
 
-// Enhanced audio processing to generate actual waveform
 async function processAudio(
   file: Buffer,
   fileType: string
 ): Promise<ProcessedFile> {
   const metadata: Record<string, any> = { type: "audio" };
-  let thumbnailBuffer: Buffer | undefined;
 
   try {
-    // Create a temporary file
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "audio-"));
     const tempFilePath = path.join(
       tempDir,
@@ -822,7 +675,6 @@ async function processAudio(
 
     fs.writeFileSync(tempFilePath, file);
 
-    // Get audio metadata like duration
     const audioInfo = await new Promise<any>((resolve, reject) => {
       ffmpeg.ffprobe(tempFilePath, (err, info) => {
         if (err) reject(err);
@@ -831,8 +683,12 @@ async function processAudio(
     });
 
     if (audioInfo?.format) {
-      metadata.duration = audioInfo.format.duration;
-      metadata.bitrate = audioInfo.format.bit_rate;
+      metadata.duration = audioInfo.format.duration
+        ? parseFloat(audioInfo.format.duration)
+        : null;
+      metadata.bitrate = audioInfo.format.bit_rate
+        ? parseInt(audioInfo.format.bit_rate)
+        : null;
 
       if (audioInfo.streams && audioInfo.streams.length > 0) {
         const audioStream = audioInfo.streams.find(
@@ -842,43 +698,34 @@ async function processAudio(
           metadata.codec = audioStream.codec_name;
           metadata.channels = audioStream.channels;
           metadata.sampleRate = audioStream.sample_rate;
+
+          if (!metadata.duration && audioStream.duration) {
+            metadata.duration = parseFloat(audioStream.duration);
+          }
+          if (!metadata.bitrate && audioStream.bit_rate) {
+            metadata.bitrate = parseInt(audioStream.bit_rate);
+          }
         }
       }
     }
 
-    // Generate a generic waveform thumbnail
-    thumbnailBuffer = await sharp({
-      create: {
-        width: 300,
-        height: 150,
-        channels: 4,
-        background: { r: 230, g: 230, b: 240, alpha: 1 },
-      },
-    })
-      .composite([
-        {
-          input: Buffer.from(`<svg width="300" height="150">
-          <rect x="0" y="0" width="300" height="150" fill="none" />
-          <path d="M10,75 Q30,30 50,75 T90,75 T130,75 T170,75 T210,75 T250,75 T290,75" stroke="#4B0082" stroke-width="3" fill="none" />
-          <text x="100" y="130" font-family="Arial" font-size="12" fill="#333">Audio Waveform</text>
-        </svg>`),
-          top: 0,
-          left: 0,
-        },
-      ])
-      .png()
-      .toBuffer();
-
-    // Clean up temporary files
+    // Clean up
     fs.unlinkSync(tempFilePath);
     fs.rmdirSync(tempDir);
   } catch (error) {
     console.error("Error processing audio:", error);
-    // Continue without thumbnail if we encounter issues
+    metadata.duration = null;
+    metadata.bitrate = null;
   }
 
+  // Convert "N/A" strings to null
+  Object.entries(metadata).forEach(([key, value]) => {
+    if (value === "N/A") {
+      metadata[key] = null;
+    }
+  });
+
   return {
-    thumbnailBuffer,
     metadata,
   };
 }
@@ -888,6 +735,7 @@ function getExtensionFromMimeType(mimeType: string): string {
   return config && config.extensions[0] ? config.extensions[0] : "";
 }
 
+// In the processFile function, replace document handling with direct PDF handling
 async function processFile(
   file: Buffer,
   fileType: string,
@@ -900,8 +748,30 @@ async function processFile(
       return processVideo(file, fileType);
     case "audio":
       return processAudio(file, fileType);
+    case "document":
+    case "presentation":
+      if (
+        fileType === "application/pdf" &&
+        (config.generatePreview || config.generateThumbnail)
+      ) {
+        try {
+          const { previewBuffer, thumbnailBuffer, pageCount } =
+            await createPdfPreview(file);
+          return {
+            previewBuffer,
+            thumbnailBuffer,
+            metadata: { pageCount },
+          };
+        } catch (error) {
+          console.error(`Error processing PDF: ${error}`);
+        }
+      }
+      return {
+        metadata: {
+          type: config.category,
+        },
+      };
     default:
-      // For documents and other types, just return metadata
       return {
         metadata: {
           type: config.category,
