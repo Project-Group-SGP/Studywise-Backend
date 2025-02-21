@@ -10,6 +10,7 @@ import { Server } from "socket.io";
 import OGrouter from "./api/ogData";
 import groupRouter from "./api/group";
 import sessionRouter from "./api/session";
+import chat from "./api/chatbot"
 import { setupAuthRoutes } from "./auth/route";
 import { setupPushSubscriptionRoutes } from "./api/push-subscription";
 import { authenticateToken } from "./middleware/auth";
@@ -44,7 +45,7 @@ app.use(
 app.use("/api/groups", groupRouter);
 app.use("/api", OGrouter);
 app.use("/api/sessions", sessionRouter);
-
+app.use("/api/chatbot", chat);
 // Middleware for sessions
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) {
