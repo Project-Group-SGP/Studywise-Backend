@@ -18,7 +18,7 @@ import { createCanvas } from "canvas";
 import libre from "libreoffice-convert";
 import util from "util";
 
-const exec = promisify(execCb);
+const execAsync = promisify(execCb);
 const libreConvert = util.promisify(libre.convert);
 // Configure Cloudinary
 cloudinary.config({
@@ -26,6 +26,45 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+async function getLibreOfficePath(): Promise<string> {
+  // Common LibreOffice installation paths for different OS
+  const possiblePaths = {
+    win32: [
+      "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+      "C:\\Program Files (x86)\\LibreOffice 7\\program\\soffice.exe",
+      "C:\\Program Files\\LibreOffice 7\\program\\soffice.exe",
+    ],
+    darwin: [
+      "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+      "/usr/local/bin/soffice",
+    ],
+    linux: [
+      "/usr/bin/soffice",
+      "/usr/lib/libreoffice/program/soffice",
+      "soffice",
+    ],
+  };
+
+  const platform = process.platform as "win32" | "darwin" | "linux";
+  const paths = possiblePaths[platform] || [];
+
+  for (const path of paths) {
+    try {
+      await fs.promises.access(path);
+      return path;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `LibreOffice not found. Please install LibreOffice and ensure it's in one of these locations: ${paths.join(
+      ", "
+    )}`
+  );
+}
 
 const getCloudinaryUploadOptions = (
   fileType: string,
@@ -537,7 +576,7 @@ async function processDocument(
       fileType === "application/vnd.oasis.opendocument.spreadsheet" ||
       fileType === "application/vnd.oasis.opendocument.presentation"
     ) {
-      // Convert Office documents to PDF first using LibreOffice
+      // Create temporary directory with proper path handling
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "office-doc-"));
       const docPath = path.join(
         tempDir,
@@ -545,23 +584,45 @@ async function processDocument(
       );
       const pdfPath = path.join(tempDir, "document.pdf");
 
-      fs.writeFileSync(docPath, file);
+      try {
+        // Write the input file
+        fs.writeFileSync(docPath, file);
 
-      // Convert to PDF
-      const pdfBuffer = await libreConvert(file, "pdf", undefined);
-      fs.writeFileSync(pdfPath, pdfBuffer);
+        // Get the correct LibreOffice path for the current OS
+        const librePath = await getLibreOfficePath();
 
-      // Now create preview from the PDF
-      const { previewBuffer: preview, thumbnailBuffer: thumbnail } =
-        await createPdfPreview(pdfBuffer);
-      previewBuffer = preview;
-      thumbnailBuffer = thumbnail;
+        // Construct the command with proper path escaping
+        const command =
+          process.platform === "win32"
+            ? `"${librePath}" --headless --convert-to pdf --outdir "${tempDir}" "${docPath}"`
+            : `${librePath} --headless --convert-to pdf --outdir "${tempDir}" "${docPath}"`;
 
-      // Clean up
-      fs.readdirSync(tempDir).forEach((file) =>
-        fs.unlinkSync(path.join(tempDir, file))
-      );
-      fs.rmdirSync(tempDir);
+        // Execute the conversion
+        await execAsync(command);
+
+        // Read the converted PDF
+        const pdfBuffer = fs.readFileSync(pdfPath);
+
+        // Generate preview from PDF
+        const { previewBuffer: preview, thumbnailBuffer: thumbnail } =
+          await createPdfPreview(pdfBuffer);
+        previewBuffer = preview;
+        thumbnailBuffer = thumbnail;
+      } catch (error) {
+        console.error("LibreOffice conversion error:", error);
+        throw error;
+      } finally {
+        // Clean up temporary files
+        try {
+          const files = fs.readdirSync(tempDir);
+          for (const file of files) {
+            fs.unlinkSync(path.join(tempDir, file));
+          }
+          fs.rmdirSync(tempDir);
+        } catch (cleanupError) {
+          console.warn("Error cleaning up temp files:", cleanupError);
+        }
+      }
     }
   } catch (error) {
     console.error(`Error generating document preview: ${error}`);
@@ -833,8 +894,6 @@ async function processFile(
   config: FileConfig
 ): Promise<ProcessedFile> {
   switch (config.category) {
-    case "document":
-      return processDocument(file, fileType);
     case "image":
       return processImage(file, fileType);
     case "video":
@@ -842,6 +901,7 @@ async function processFile(
     case "audio":
       return processAudio(file, fileType);
     default:
+      // For documents and other types, just return metadata
       return {
         metadata: {
           type: config.category,
