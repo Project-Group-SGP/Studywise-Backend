@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { db } from "../../prismaClient";
 import { TokenPayload } from "types";
+import z from "zod";
 
 // Define interface for authenticated request
 interface AuthenticatedRequest extends Request {
@@ -735,5 +736,394 @@ export const getGroupFiles = async (
   } catch (error) {
     console.error("Error getting group files:", error);
     return res.status(500).json({ message: "Failed to get group files" });
+  }
+};
+
+// Validation schemas
+const createBoardSchema = z.object({
+  title: z.string().min(1, "Title is required").max(60, "Title cannot exceed 60 characters"),
+});
+
+const updateBoardSchema = z.object({
+  title: z.string().min(1, "Title is required").max(60, "Title cannot exceed 60 characters"),
+});
+
+// Helper function to check group membership
+async function checkGroupMembership(userId: string, groupId: string) {
+  const group = await db.group.findUnique({
+    where: { id: groupId },
+    select: { memberIds: true }
+  });
+
+  if (!group) {
+    throw new Error("Group not found");
+  }
+
+  if (!group.memberIds.includes(userId)) {
+    throw new Error("Not a member of this group");
+  }
+
+  return group;
+}
+
+// Get all boards in a group
+export const getBoards = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const boards = await db.board.findMany({
+      where: { groupId },
+      include: {
+        author: {
+          select: {
+            name: true,
+            avatarUrl: true,
+          }
+        },
+        favorites: {
+          where: { userId: user.id },
+          select: { id: true }
+        }
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    const formattedBoards = boards.map(board => ({
+      ...board,
+      isFavorited: board.favorites.length > 0,
+      favorites: undefined
+    }));
+
+    return res.status(200).json(formattedBoards);
+  } catch (error) {
+    console.error("Error getting boards:", error);
+    return res.status(500).json({ message: "Failed to get boards" });
+  }
+};
+
+// Get user's favorite boards in a group
+export const getFavoriteBoards = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const favorites = await db.board.findMany({
+      where: {
+        groupId,
+        favorites: {
+          some: { userId: user.id }
+        }
+      },
+      include: {
+        author: {
+          select: {
+            name: true,
+            avatarUrl: true,
+          }
+        }
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    return res.status(200).json(favorites.map(board => ({ ...board, isFavorited: true })));
+  } catch (error) {
+    console.error("Error getting favorite boards:", error);
+    return res.status(500).json({ message: "Failed to get favorite boards" });
+  }
+};
+
+// Get a specific board by ID
+export const getBoardById = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId, id: boardId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const board = await db.board.findUnique({
+      where: { 
+        id: boardId,
+        groupId 
+      },
+      include: {
+        author: {
+          select: {
+            name: true,
+            avatarUrl: true,
+          }
+        },
+        favorites: {
+          where: { userId: user.id },
+          select: { id: true }
+        }
+      }
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    return res.status(200).json({
+      ...board,
+      isFavorited: board.favorites.length > 0,
+      favorites: undefined
+    });
+  } catch (error) {
+    console.error("Error getting board:", error);
+    return res.status(500).json({ message: "Failed to get board" });
+  }
+};
+
+// Create a new board
+export const createBoard = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const validatedData = createBoardSchema.parse(req.body);
+    const randomImage = `/board-${Math.floor(Math.random() * 15) + 1}.svg`;
+
+    const board = await db.board.create({
+      data: {
+        title: validatedData.title.trim(),
+        groupId,
+        authorId: user.id,
+        authorName: user.name,
+        imageUrl: randomImage,
+      },
+      include: {
+        author: {
+          select: {
+            name: true,
+            avatarUrl: true,
+          }
+        }
+      }
+    });
+
+    return res.status(201).json({ ...board, isFavorited: false });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.errors[0].message });
+    }
+    console.error("Error creating board:", error);
+    return res.status(500).json({ message: "Failed to create board" });
+  }
+};
+
+// Update a board
+export const updateBoard = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId, id: boardId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const validatedData = updateBoardSchema.parse(req.body);
+
+    const board = await db.board.findUnique({
+      where: { 
+        id: boardId,
+        groupId
+      }
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    if (board.authorId !== user.id) {
+      return res.status(403).json({ message: "Only the board author can update it" });
+    }
+
+    const updatedBoard = await db.board.update({
+      where: { id: boardId },
+      data: { 
+        title: validatedData.title.trim(),
+        updatedAt: new Date()
+      },
+      include: {
+        author: {
+          select: {
+            name: true,
+            avatarUrl: true,
+          }
+        },
+        favorites: {
+          where: { userId: user.id },
+          select: { id: true }
+        }
+      }
+    });
+
+    return res.status(200).json({
+      ...updatedBoard,
+      isFavorited: updatedBoard.favorites.length > 0,
+      favorites: undefined
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.errors[0].message });
+    }
+    console.error("Error updating board:", error);
+    return res.status(500).json({ message: "Failed to update board" });
+  }
+};
+
+// Delete a board
+export const deleteBoard = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId, id: boardId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const board = await db.board.findUnique({
+      where: { 
+        id: boardId,
+        groupId
+      }
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    if (board.authorId !== user.id) {
+      return res.status(403).json({ message: "Only the board author can delete it" });
+    }
+
+    // Delete associated favorites first due to referential integrity
+    await db.userFavorite.deleteMany({
+      where: { boardId }
+    });
+
+    await db.board.delete({
+      where: { id: boardId }
+    });
+
+    return res.status(200).json({ message: "Board deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting board:", error);
+    return res.status(500).json({ message: "Failed to delete board" });
+  }
+};
+
+// Toggle board favorite status
+export const favoriteBoard = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId, id: boardId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const board = await db.board.findUnique({
+      where: { 
+        id: boardId,
+        groupId
+      }
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: "Board not found" });
+    }
+
+    await db.userFavorite.create({
+      data: {
+        userId: user.id,
+        boardId,
+        groupId
+      }
+    });
+
+    return res.status(200).json({ message: "Board favorited successfully" });
+  } catch (error) {
+    if ((error as any).code === 'P2002') {
+      return res.status(400).json({ message: "Board already favorited" });
+    }
+    console.error("Error favoriting board:", error);
+    return res.status(500).json({ message: "Failed to favorite board" });
+  }
+};
+
+// Remove board from favorites
+export const unfavoriteBoard = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { groupId, id: boardId } = req.params;
+    await checkGroupMembership(user.id, groupId);
+
+    const result = await db.userFavorite.deleteMany({
+      where: {
+        userId: user.id,
+        boardId,
+        groupId
+      }
+    });
+
+    if (result.count === 0) {
+      return res.status(404).json({ message: "Board not found in favorites" });
+    }
+
+    return res.status(200).json({ message: "Board removed from favorites" });
+  } catch (error) {
+    console.error("Error unfavoriting board:", error);
+    return res.status(500).json({ message: "Failed to remove board from favorites" });
   }
 };
