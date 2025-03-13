@@ -22,11 +22,21 @@ export const generateDiagram = async (req: Request, res: Response) => {
 
     // Generate content with instructions to first validate and then create mermaid code
     const result = await model.generateContent(`
-      First, determine if the following request is asking for a diagram that can be created using mermaid syntax.
+      You are a diagram generation expert that creates valid mermaid syntax code. Carefully analyze the following request and respond accordingly:
       
-      If it IS a valid diagram request that can be represented in mermaid, respond ONLY with valid mermaid code without any explanations, markdown formatting, or backticks.
+      Step 1: Determine if the request is for a diagram that can be represented using mermaid syntax.
       
-      If it is NOT a valid diagram request or cannot be represented in mermaid, respond with "INVALID_REQUEST:" followed by a brief explanation.
+      Step 2: If it IS a valid diagram request:
+        - Respond ONLY with the complete, valid mermaid code
+        - Do not include any explanations, markdown formatting, or backticks
+        - Make sure the syntax is correct and will render properly
+        - DO NOT use any icon syntax or Font Awesome icons
+        - Support all standard mermaid diagram types: flowchart, sequence, class, state, entity-relationship, gantt, pie, timeline, mindmap
+        - For mindmaps specifically, ensure proper indentation to represent hierarchy
+      
+      Step 3: If it is NOT a valid diagram request or cannot be represented in mermaid:
+        - Respond with "INVALID_REQUEST:" followed by a brief explanation of why it can't be created
+        - Suggest an alternative approach if possible
       
       Request: ${prompt}
     `);
@@ -34,6 +44,8 @@ export const generateDiagram = async (req: Request, res: Response) => {
     // Extract the response text
     const response = result.response;
     let responseText = response.text().trim();
+
+    console.log(responseText);
 
     // Check if the response indicates an invalid request
     if (responseText.startsWith("INVALID_REQUEST:")) {
