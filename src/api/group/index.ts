@@ -44,15 +44,15 @@ router.post('/:groupId/board/create', authenticateToken, controller.createBoard)
 // @ts-ignore
 router.get('/:groupId/board/list', authenticateToken, controller.getBoards);
 // @ts-ignore
-router.get('/:groupId/board/favorites', authenticateToken, controller.getFavoriteBoards);
+router.get('/:groupId/board/favorites/:id', authenticateToken, controller.getFavoriteBoards);
 // @ts-ignore
-router.post('/:groupId/board/favorite', authenticateToken, controller.favoriteBoard);
+router.post('/:groupId/board/favorite/:id', authenticateToken, controller.favoriteBoard);
 // @ts-ignore
-router.post('/:groupId/board/unfavorite', authenticateToken, controller.unfavoriteBoard);
+router.post('/:groupId/board/unfavorite/:id', authenticateToken, controller.unfavoriteBoard);
 // @ts-ignore
-router.patch('/:groupId/board/:id', authenticateToken, controller.updateBoard);
+router.post('/:groupId/board/rename/:id', authenticateToken, controller.updateBoard);
 // @ts-ignore
-router.delete('/:groupId/board/:id', authenticateToken, controller.deleteBoard);
+router.post('/:groupId/board/delete/:id', authenticateToken, controller.deleteBoard);
 // @ts-ignore
 router.get('/:groupId/board/:id', authenticateToken, controller.getBoardById);
 
