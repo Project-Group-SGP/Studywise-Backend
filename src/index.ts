@@ -13,6 +13,7 @@ import sessionRouter from "./api/session";
 import chat from "./api/chatbot";
 import diagram from "./api/diagram";
 import board from "./api/board";
+import call from "./api/call";
 import { setupAuthRoutes } from "./auth/route";
 import { setupPushSubscriptionRoutes } from "./api/push-subscription";
 import { authenticateToken } from "./middleware/auth";
@@ -50,6 +51,7 @@ app.use("/api/sessions", sessionRouter);
 app.use("/api/chatbot", chat);
 app.use("/api/", diagram);
 app.use("/api", board);
+app.use("/api/call", call);
 // Middleware for sessions
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) {

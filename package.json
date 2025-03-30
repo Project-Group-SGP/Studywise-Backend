@@ -15,6 +15,7 @@
     "@google/generative-ai": "^0.22.0",
     "@liveblocks/node": "^2.20.0",
     "@prisma/client": "^6.4.1",
+    "@stream-io/node-sdk": "^0.4.18",
     "@types/morgan": "^1.9.9",
     "@types/web-push": "^3.6.4",
     "canvas": "^3.1.0",
