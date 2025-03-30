@@ -797,10 +797,16 @@ export const getBoards = async (
       orderBy: { updatedAt: "desc" }
     });
 
-    const formattedBoards = boards.map(board => ({
-      ...board,
-      isFavorited: board.favorites.length > 0,
-      favorites: undefined
+    const formattedBoards = boards.map((board) => ({
+      id: board.id,
+      title: board.title,
+      authorId: board.authorId,
+      authorName: board.author.name,
+      imageurl: board.imageUrl,
+      groupId: board.groupId,
+      createdAt: board.createdAt,
+      updatedAt: board.updatedAt,
+      isFavorite: board.favorites.length > 0
     }));
 
     return res.status(200).json(formattedBoards);
@@ -867,18 +873,6 @@ export const getBoardById = async (
       where: { 
         id: boardId,
         groupId 
-      },
-      include: {
-        author: {
-          select: {
-            name: true,
-            avatarUrl: true,
-          }
-        },
-        favorites: {
-          where: { userId: user.id },
-          select: { id: true }
-        }
       }
     });
 
@@ -886,11 +880,7 @@ export const getBoardById = async (
       return res.status(404).json({ message: "Board not found" });
     }
 
-    return res.status(200).json({
-      ...board,
-      isFavorited: board.favorites.length > 0,
-      favorites: undefined
-    });
+    return res.status(200).json(board);
   } catch (error) {
     console.error("Error getting board:", error);
     return res.status(500).json({ message: "Failed to get board" });
@@ -1061,6 +1051,7 @@ export const favoriteBoard = async (
       return res.status(404).json({ message: "Board not found" });
     }
 
+
     await db.userFavorite.create({
       data: {
         userId: user.id,
@@ -1069,12 +1060,14 @@ export const favoriteBoard = async (
       }
     });
 
+    console.log("Hello board favaorted");
+
     return res.status(200).json({ message: "Board favorited successfully" });
   } catch (error) {
+    console.error("Error favoriting board:", error);
     if ((error as any).code === 'P2002') {
       return res.status(400).json({ message: "Board already favorited" });
     }
-    console.error("Error favoriting board:", error);
     return res.status(500).json({ message: "Failed to favorite board" });
   }
 
@@ -1087,32 +1080,44 @@ export const unfavoriteBoard = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<Response> => {
-  // try {
-  //   const user = req.user;
-  //   if (!user) {
-  //     return res.status(401).json({ message: "Unauthorized" });
-  //   }
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
-  //   const { groupId, id: boardId } = req.params;
-  //   await checkGroupMembership(user.id, groupId);
+    const { groupId, id: boardId } = req.params;
 
-  //   const result = await db.userFavorite.deleteMany({
-  //     where: {
-  //       userId: user.id,
-  //       boardId,
-  //       groupId
-  //     }
-  //   });
 
-  //   if (result.count === 0) {
-  //     return res.status(404).json({ message: "Board not found in favorites" });
-  //   }
+    const favorite = await db.userFavorite.findFirst({
+      where: {
+        userId: user.id,
+        boardId,
+        groupId
+      }
+    });
 
-  //   return res.status(200).json({ message: "Board removed from favorites" });
-  // } catch (error) {
-  //   console.error("Error unfavoriting board:", error);
-  //   return res.status(500).json({ message: "Failed to remove board from favorites" });
-  // }
-  console.log("UnFavorite board");
-  return res.status(200).json({ message: "Board unfavorited successfully" });
+    if (!favorite) {
+      return res.status(404).json({ message: "Board not found in favorites" });
+    }
+
+    const result = await db.userFavorite.deleteMany({
+      where: {
+        userId: user.id,
+        boardId,
+        groupId
+      }
+    });
+
+    if (result.count === 0) {
+      return res.status(404).json({ message: "Board not found in favorites" });
+    }
+
+    return res.status(200).json({ message: "Board removed from favorites" });
+  } catch (error) {
+    console.error("Error unfavoriting board:", error);
+    return res.status(500).json({ message: "Failed to remove board from favorites" });
+  }
+  // console.log("UnFavorite board");
+  // return res.status(200).json({ message: "Board unfavorited successfully" });
 };
