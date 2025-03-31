@@ -143,7 +143,10 @@ export const handleCallEvents = (io: Server, socket: Socket) => {
       // If no participants left or if initiator left, end the call
       if (activeCall.participants.size === 0 || participantId === activeCall.initiatedBy) {
         activeGroupCalls.delete(groupId);
-        io.to(groupId).emit("call_ended");
+        io.to(groupId).emit("call_ended", { 
+          endedBy: participantId, 
+          endedByName: participantName || 'Unknown user' 
+        });
         console.log(`[Call] Call ended in group ${groupId}`);
       }
     } catch (error) {
@@ -152,15 +155,18 @@ export const handleCallEvents = (io: Server, socket: Socket) => {
   });
 
   // Handle explicit call ending (anyone can end their own call)
-  socket.on("call_ended", ({ groupId, callId }) => {
+  socket.on("call_ended", ({ groupId, callId, endedBy, endedByName }) => {
     try {
-      console.log(`[Call] Call explicitly ended in group ${groupId}`);
+      console.log(`[Call] Call explicitly ended in group ${groupId} by ${endedByName || endedBy || 'unknown user'}`);
       
       // End the call
       activeGroupCalls.delete(groupId);
       
       // Broadcast to all users in the group
-      io.to(groupId).emit("call_ended");
+      io.to(groupId).emit("call_ended", { 
+        endedBy, 
+        endedByName: endedByName || 'Unknown user' 
+      });
       
       console.log(`[Call] Call ended notification sent to group ${groupId}`);
     } catch (error) {
@@ -223,7 +229,10 @@ export const handleCallEvents = (io: Server, socket: Socket) => {
         // If call is empty or initiator left
         if (activeCall.participants.size === 0 || participantId === activeCall.initiatedBy) {
           activeGroupCalls.delete(groupId);
-          io.to(groupId).emit("call_ended");
+          io.to(groupId).emit("call_ended", { 
+            endedBy: participantId, 
+            endedByName: participantName || 'Unknown user' 
+          });
           console.log(`[Call] Call ended in group ${groupId}`);
         }
         
@@ -264,7 +273,10 @@ export const handleCallEvents = (io: Server, socket: Socket) => {
           // If empty call or was initiator, end the call
           if (call.participants.size === 0 || userId === call.initiatedBy) {
             activeGroupCalls.delete(groupId);
-            io.to(groupId).emit("call_ended");
+            io.to(groupId).emit("call_ended", { 
+              endedBy: userId, 
+              endedByName: userName || 'Unknown user' 
+            });
             console.log(`[Call] Call ended in group ${groupId} due to initiator disconnect`);
           }
         }

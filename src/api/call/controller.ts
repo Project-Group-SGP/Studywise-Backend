@@ -33,11 +33,12 @@ export const tokenProvider = async (
     
     console.log(`Generating Stream token for user: ${userId}, name: ${userName}`);
 
-    // Create token with expiration
-    const token = client.createToken(userId, expiresAt);
+    // Create token with proper parameters for Stream Node SDK
+    const token = client.createToken(userId);
 
     // Log token for debugging (never do this in production)
     console.log(`Generated token: ${token.substring(0, 10)}...`);
+    console.log(`Token generated with default permissions for user: ${userId}`);
 
     // Return token with expiration time
     res.json({ 
