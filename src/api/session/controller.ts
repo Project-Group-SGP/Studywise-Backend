@@ -67,7 +67,7 @@ export const getAllSessions = async (
     const sessions = await db.session.findMany({
       where: {
         groupId: groupId,
-      },
+      }
     });
 
     res.status(200).json(sessions);
@@ -120,6 +120,16 @@ export const createSession = async (
         .status(403)
         .json({ message: "You are not a member of this group" });
     }
+    
+    // const board = await db.board.create({
+    //   data: {
+    //     title: name,
+    //     groupId:groupId,
+    //     authorId: user.id,
+    //     authorName: user.name,
+    //     imageUrl: '/boards/board-' + Math.floor(Math.random() * 18) + 1 + '.svg',
+    //   }
+    // });
 
     const session = await db.session.create({
       data: {
@@ -129,6 +139,7 @@ export const createSession = async (
         groupId,
         prerequisites: preRequisites,
         creatorID: user.id,
+        //boardId: board.id
       },
     });
 
@@ -311,7 +322,7 @@ export const startSession = async (
       where: { id: sessionId },
       data: {
         isStarted: true,
-        startedAt: new Date()
+        startedAt: new Date(),
       }
     });
 
