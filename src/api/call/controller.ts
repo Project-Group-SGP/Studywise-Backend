@@ -24,26 +24,30 @@ export const tokenProvider = async (
   try {
     const client = new StreamClient(apiKey, apiSecret);
 
-    // Set token expiration to 24 hours from now
-    const expiresAt = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+    // Get current time in seconds
+    const now = Math.floor(Date.now() / 1000);
+
+    // **Backdate iat by 10 seconds** to prevent "used before issue at" errors
+    const iat = now - 10;
+    const expiresAt = now + 24 * 60 * 60; // Expire in 24 hours
 
     // Get user details from request
     const userId = req.user.id;
-    const userName = req.user.name || 'Unknown User';
-    
-    console.log(`Generating Stream token for user: ${userId}, name: ${userName}`);
 
-    // Create token with proper parameters for Stream Node SDK
-    const token = client.createToken(userId);
+    console.log(`Generating Stream token for user: ${userId}`);
 
-    // Log token for debugging (never do this in production)
-    console.log(`Generated token: ${token.substring(0, 10)}...`);
-    console.log(`Token generated with default permissions for user: ${userId}`);
+    // **Explicitly setting iat while generating token**
+    const token = client.createToken(userId, expiresAt, iat);
 
-    // Return token with expiration time
-    res.json({ 
+    console.log(
+      `Generated token for ${userId}: Expires at ${new Date(
+        expiresAt * 1000
+      ).toISOString()}`
+    );
+
+    res.json({
       token,
-      expiresAt: expiresAt * 1000 // Convert to milliseconds for frontend
+      expiresAt: expiresAt * 1000, // Convert to milliseconds for frontend
     });
   } catch (error) {
     console.error("Error generating token:", error);
