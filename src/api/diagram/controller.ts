@@ -1,10 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Liveblocks } from "@liveblocks/node";
-import { Request} from "express";
 import type { Response } from "express";
-import { TokenPayload } from "google-auth-library";
-import { db } from "prismaClient";
-import { GoogleUserPayload } from "types";
+import { Request } from "express";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -23,7 +19,7 @@ export const generateDiagram = async (req: Request, res: Response) => {
     }
 
     // Create a model instance
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     // Generate content with instructions to first validate and then create mermaid code
     const result = await model.generateContent(`
@@ -36,7 +32,7 @@ export const generateDiagram = async (req: Request, res: Response) => {
         - Do not include any explanations, markdown formatting, or backticks
         - Make sure the syntax is correct and will render properly
         - DO NOT use any icon syntax or Font Awesome icons
-        - Support all standard mermaid diagram types: flowchart, sequence, class, state, entity-relationship, gantt, pie, timeline, mindmap
+        - Support all standard mermaid diagram types: flowchart, sequence, class, state, entity-relationship, gantt, pie, timeline, mindmap etc.
         - For mindmaps specifically, ensure proper indentation to represent hierarchy
       
       Step 3: If it is NOT a valid diagram request or cannot be represented in mermaid:
